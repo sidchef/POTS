@@ -77,6 +77,18 @@ model User {
   userStoryHistoryChangedBy UserStoryHistory[]
 
   architectureHistories ArchitectureHistory[]
+
+  tasksCreatedBy Task[]
+
+  taskAssignedBy TaskAssignment[] @relation("TaskAssignedBy")
+
+  taskAssignedTo TaskAssignment[] @relation("TaskAssignedTo")
+
+  taskMilestonesCreatedBy TaskMilestone[]
+
+  taskDependenciesDeclared TaskDependency[]
+
+  taskHistoryChangedBy TaskHistory[]
 }
 
 model UserRole {
@@ -193,6 +205,8 @@ model Brm {
 
 
   architectureTrackings ArchitectureTracking[]
+
+  tasks Task[]
 }
 
 
@@ -210,7 +224,13 @@ enum BrmStatus {
 
   ARCHITECTURE_REVIEW
 
-  DEVELOPMENT
+  READY_FOR_DEVELOPMENT
+
+  WORK_STARTED
+
+  DEVELOPMENT_IN_PROGRESS
+
+  READY_FOR_QA
 
   QA
 
@@ -374,6 +394,9 @@ enum SlaType {
 
   BRM_REVIEW
 }
+
+
+
 
 
 
@@ -601,6 +624,249 @@ model ArchitectureHistory {
 
   changedBy              User@relation(fields:[changedById],references:[id])//NOT ADDED TO TABLE
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//PHASE 3 : READY FOR DEV --> TSP TL CREATES TASK --> TSP TL ASSIGNS IT TO TSP TM --> TSP TM LOGS THE PROGRESS --> AFTER TSAK IS COMPLETED TSP TL ASSIGNS IT TO QA
+
+model Task {
+
+  id              String @id @default(uuid())
+
+  brmId           String
+
+  taskNumber      String @unique
+
+  title           String
+
+  description     String
+
+  priority        TaskPriority
+
+  status          TaskStatus
+
+  startDate       DateTime?
+
+  targetEndDate   DateTime?
+
+  actualEndDate   DateTime?
+
+  createdById     String
+
+  createdAt       DateTime @default(now())
+
+  updatedAt       DateTime @updatedAt
+
+  brm             Brm @relation(fields:[brmId],references:[id])
+
+  createdBy       User @relation(fields:[createdById],references:[id])
+
+  taskAssignedTo TaskAssignment[]
+
+  taskMilestones TaskMilestone[]
+
+  taskDependencies    TaskDependency[] @relation("TaskDependencies")
+
+  dependsOnTasks      TaskDependency[] @relation("DependsOnTasks")
+
+  history       TaskHistory[]
+
+  //taskProgressUpdates TaskProgressUpdate[]
+}
+
+
+
+  
+
+enum TaskPriority {
+
+  Low
+
+  Medium 
+
+  High
+
+}
+
+enum TaskStatus {
+
+  CREATED
+
+  ASSIGNED
+
+  IN_PROGRESS
+
+  BLOCKED
+
+  COMPLETED
+
+  QA_ASSIGNED
+
+  QA_IN_PROGRESS
+
+  QA_DONE
+}
+
+
+
+model TaskAssignment {
+
+  id              String @id @default(uuid())
+
+  taskId          String
+
+  assignmentType  TaskAssignmentType
+
+  assignedById    String
+
+  assignedToId    String
+
+  status          AssignmentStatus
+
+  isCurrent       Boolean @default(true)
+
+  assignedAt      DateTime @default(now())
+
+  completedAt     DateTime?
+
+  taskAssignedTo            Task @relation(fields:[taskId],references:[id])
+
+  assignedBy                User @relation("TaskAssignedBy",fields:[assignedById],references:[id])  
+
+  assignedTo                User @relation("TaskAssignedTo",fields:[assignedToId],references:[id])
+}
+
+
+enum TaskAssignmentType {
+
+  TSP_TM
+
+  TSP_QA
+}
+
+
+// not needed now will look to it later how to configure it
+//model TaskProgressUpdate {
+
+ // id            String @id @default(uuid())
+
+ // taskId        String
+
+ // percentage    Int
+
+  //remarks       String?
+
+  //updatedById   String
+
+  //createdAt     DateTime @default(now())
+
+  //task          Task @relation(fields:[taskId],references:[id])
+
+
+//}
+
+
+model TaskMilestone {
+
+  id            String @id @default(uuid())
+
+  taskId        String
+
+  title         String
+
+  description   String?
+
+  status        MilestoneStatus
+
+  createdById   String
+
+  createdAt     DateTime @default(now())
+
+  task          Task @relation(fields:[taskId],references:[id])
+
+  createdBy     User @relation(fields:[createdById],references:[id])
+
+
+
+
+}
+
+
+enum MilestoneStatus {
+
+  PENDING
+
+  COMPLETED
+}
+
+
+model TaskDependency {
+
+  taskId            String
+
+  dependsOnTaskId   String
+
+  declaredById      String
+
+  createdAt         DateTime @default(now())
+
+  task              Task @relation("TaskDependencies", fields: [taskId], references: [id])
+  dependsOnTask     Task @relation("DependsOnTasks", fields: [dependsOnTaskId], references: [id])
+  declaredBy        User @relation(fields: [declaredById], references: [id])
+
+  @@id([taskId, dependsOnTaskId])
+}
+
+
+
+model TaskHistory {
+
+  id            String @id @default(uuid())
+
+  taskId        String
+
+  oldStatus     String?
+
+  newStatus     String
+
+  remarks       String?
+
+  changedById   String
+
+  createdAt     DateTime @default(now())
+
+  task          Task @relation(fields:[taskId],references:[id])
+
+  changedBy     User @relation(fields:[changedById],references:[id])
+
+}
+
+
+
+
+
+
+
+
 
 
 
