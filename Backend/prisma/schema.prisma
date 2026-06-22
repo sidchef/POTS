@@ -43,25 +43,40 @@ model Permission {
 
 model User {
   id            String   @id @default(uuid())
-
   employeeId    String   @unique
   firstName     String
   lastName      String
-
   email         String   @unique
-
   passwordHash  String
-
   isActive      Boolean  @default(true)
 
   roles         UserRole[]
-
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-
+  
   auditLogs AuditLog[]
-
   userPermissions UserPermission[]
+  notifications Notification[]
+  
+  // BRM relations
+  brmsCreated   Brm[] @relation("BrmCreatedBy")
+  brmsAssignedTo Brm[] @relation("BrmCurrentPl")
+  approvals     BrmApproval[]
+  brmHistoryChanges BrmHistory[]
+  oldOwnershipHistories BrmOwnershipHistory[] @relation("OldPl")
+  newOwnershipHistories BrmOwnershipHistory[] @relation("NewPl")
+  ownershipHistoryChanges BrmOwnershipHistory[] @relation("ChangedBy")
+  approvalAssignments ApprovalAssignment[]
+
+  brmAssignedBy BrmAssignment[] @relation("AssignedBy")
+
+  brmAssignedTo BrmAssignment[] @relation("AssignedTo")
+
+  userStoriesCreatedBy UserStory[]
+
+  userStoryHistoryChangedBy UserStoryHistory[]
+
+  architectureHistories ArchitectureHistory[]
 }
 
 model UserRole {
@@ -103,6 +118,7 @@ model UserPermission {
   @@id([userId, permissionId])
 }
 
+//aduit the task through the flow and remember the entityType like user,brm and so on
 model AuditLog {
 
   id          String   @id @default(uuid())
@@ -122,3 +138,469 @@ model AuditLog {
 
   createdAt   DateTime @default(now())
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//
+
+// PHASE 1 : PL enters BRM into POTS --> PL sunmits BRM --> HF & HT notified --> SLA starts --> HF & HT approve/reject
+
+// BRM FORM TABLES 
+// Update Brm model
+model Brm {
+  id              String   @id @default(uuid())
+  brmNumber       String   @unique
+  title           String
+  description     String?
+  priority        String?
+  currentStatus   BrmStatus
+
+  createdById     String
+  createdBy       User @relation("BrmCreatedBy", fields: [createdById], references: [id])
+
+  currentPlId     String
+  currentPl       User @relation("BrmCurrentPl", fields: [currentPlId], references: [id])
+
+  submittedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  approvalCycles  BrmApprovalCycle[]
+  approvals       BrmApproval[]
+  history         BrmHistory[]
+  slas            SlaTracking[]
+  ownershipHistory BrmOwnershipHistory[]
+  approvalAssignments ApprovalAssignment[]
+  
+
+  brmAssignments BrmAssignment[]
+  userStory UserStory[]
+
+
+  architectureTrackings ArchitectureTracking[]
+}
+
+
+enum BrmStatus {
+
+  DRAFT
+
+  SUBMITTED
+
+  REJECTED
+
+  APPROVED
+
+  USER_STORY_CREATION
+
+  ARCHITECTURE_REVIEW
+
+  DEVELOPMENT
+
+  QA
+
+  SECURITY
+
+  CLOSED
+}
+
+
+// Update BrmApproval model
+model BrmApproval {
+  id                String   @id @default(uuid())
+  brmId             String
+  approvalCycleId   String
+  
+  approverId        String
+  approver          User @relation(fields: [approverId], references: [id])
+  
+  approverRole      String
+  status            ApprovalStatus
+  comments          String?
+  approvedAt        DateTime?
+  createdAt         DateTime @default(now())
+
+  brm               Brm @relation(fields: [brmId], references: [id])
+
+  cycle BrmApprovalCycle @relation(fields:[approvalCycleId], references:[id])
+}
+
+enum ApprovalStatus {
+
+  PENDING
+
+  APPROVED
+
+  REJECTED
+}
+
+// Update BrmHistory model
+model BrmHistory {
+  id            String   @id @default(uuid())
+  brmId         String
+  
+  oldStatus     String?
+  newStatus     String
+  remarks       String?
+  
+  changedById   String
+  changedBy     User @relation(fields: [changedById], references: [id])
+  
+  createdAt     DateTime @default(now())
+  brm           Brm @relation(fields:[brmId], references:[id])
+}
+
+// Update Notification model
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  title       String
+  message     String
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+// Update BrmOwnershipHistory model
+model BrmOwnershipHistory {
+  id            String @id @default(uuid())
+  
+  brmId         String
+  brm           Brm @relation(fields: [brmId], references: [id])
+  
+  oldPlId       String
+  oldPl         User @relation("OldPl", fields: [oldPlId], references: [id])
+  
+  newPlId       String
+  newPl         User @relation("NewPl", fields: [newPlId], references: [id])
+  
+  changedById   String
+  changedBy     User @relation("ChangedBy", fields: [changedById], references: [id])
+  
+  changedAt     DateTime @default(now())
+}
+
+// Update ApprovalAssignment model
+model ApprovalAssignment {
+  id            String @id @default(uuid())
+  
+  brmId         String
+  brm           Brm @relation(fields: [brmId], references: [id])
+  
+  approverId    String
+  approver      User @relation(fields: [approverId], references: [id])
+  
+  roleName      String
+  assignedAt    DateTime
+  dueDate       DateTime
+  respondedAt   DateTime?
+  isOverdue     Boolean @default(false)
+}
+
+
+
+// for the management of BRM resubmission
+model BrmApprovalCycle {
+
+  id            String   @id @default(uuid())
+
+  brmId         String
+
+  cycleNumber   Int
+
+  status        ApprovalCycleStatus
+
+  startedAt     DateTime
+
+  completedAt   DateTime?
+
+  brm           Brm @relation(fields: [brmId], references: [id])
+
+  approvals     BrmApproval[]
+}
+
+enum ApprovalCycleStatus {
+
+  IN_PROGRESS
+
+  APPROVED
+
+  REJECTED
+}
+
+
+
+// Tracking the SLA for BRM approval
+model SlaTracking {
+
+  id              String   @id @default(uuid())
+
+  brmId           String
+
+  slaType         SlaType
+
+  startDate       DateTime
+
+  dueDate         DateTime
+
+  completedDate   DateTime?
+
+  breached        Boolean  @default(false)
+
+  createdAt       DateTime @default(now())
+
+  brm             Brm @relation(fields:[brmId], references:[id])
+}
+
+
+
+// SLA types currently added brmreview later will add QA revies and security scan review
+enum SlaType {
+
+  BRM_REVIEW
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//PHASE 2 : BRM APPROVED --> PL ASSIGNS TM --> TM CREATES USER STORIES --> PL ASSIGNS TSP TL --> TSP TL CREATES ARCHITECTURE --> GOES FOR CISO APPROVAL IF NEEDED --> TSP TL UPDATES THE STATUS AFTER CISO DECISION
+
+
+
+//USED FOR TRACKING THE BRM ASSIGNEMENTS
+model BrmAssignment {
+
+  id                String @id @default(uuid())
+
+  brmId             String
+
+  assignmentType    AssignmentType
+
+  assignedById      String
+  assignedToId      String
+
+  status            AssignmentStatus
+
+  isCurrent         Boolean @default(true)
+
+  remarks           String?
+
+  assignedAt        DateTime @default(now())
+
+  acceptedAt        DateTime?
+
+  completedAt       DateTime?
+
+  brm               Brm @relation(fields:[brmId],references:[id])
+
+  assignedBy        User @relation("AssignedBy",fields:[assignedById],references:[id])
+
+  assignedTo        User @relation("AssignedTo",fields:[assignedToId],references:[id])
+
+  architectureTrackings ArchitectureTracking[]
+}
+
+
+
+enum AssignmentType {
+
+  TM
+
+  TSP_TL
+
+  QA
+
+  SECURITY
+}
+
+
+
+enum AssignmentStatus {
+
+  ASSIGNED
+
+  ACCEPTED
+
+  IN_PROGRESS
+
+  COMPLETED
+
+  REASSIGNED
+
+  CANCELLED
+}
+
+
+
+model UserStory {
+
+  id              String @id @default(uuid())
+
+  brmId           String
+
+  storyNumber     String @unique
+
+  title           String
+
+  description     String
+
+  priority        String?
+
+  status          UserStoryStatus
+
+  createdById     String
+
+  createdAt       DateTime @default(now())
+
+  updatedAt       DateTime @updatedAt
+
+  brm             Brm @relation(fields:[brmId],references:[id])//NOT ADDED TO BRM
+
+  createdBy       User @relation(fields:[createdById],references:[id])//NOT ADDED YO USER
+
+  history         UserStoryHistory[]
+}
+
+
+
+enum UserStoryStatus {
+
+  DRAFT
+
+  IN_PROGRESS
+
+  COMPLETED
+}
+
+
+
+
+model UserStoryHistory {
+
+  id            String @id @default(uuid())
+
+  userStoryId   String
+
+  oldStatus     String?
+
+  newStatus     String
+
+  remarks       String?
+
+  changedById   String
+
+  createdAt     DateTime @default(now())
+
+  userStory     UserStory @relation(fields:[userStoryId],references:[id])
+
+  changedBy     User @relation(fields:[changedById],references:[id])
+}
+
+
+
+
+model ArchitectureTracking {
+
+  id                     String @id @default(uuid())
+
+  brmId                  String
+
+  assignmentId           String
+
+  requiresCisoApproval   Boolean
+
+  status                 ArchitectureStatus
+
+  architectureReceivedAt DateTime?
+
+  submittedToCisoAt      DateTime?
+
+  cisoDecisionAt         DateTime?
+
+  cisoComments           String?
+
+  approvedAt             DateTime?
+
+  remarks                String?
+
+  createdAt              DateTime @default(now())
+
+  updatedAt              DateTime @updatedAt
+
+  brm                    Brm @relation(fields: [brmId], references: [id])
+  
+  assignment             BrmAssignment @relation(fields: [assignmentId], references: [id])
+
+  architectureHistories ArchitectureHistory[]
+}
+
+
+
+
+
+enum ArchitectureStatus {
+
+  WAITING_FOR_ARCHITECTURE
+
+  ARCHITECTURE_RECEIVED
+
+  SUBMITTED_TO_CISO
+
+  ARCHITECTURE_REJECTED
+
+  READY_FOR_DEVELOPMENT
+}
+
+
+
+model ArchitectureHistory {
+
+  id                       String @id @default(uuid())
+
+  architectureTrackingId   String
+
+  oldStatus                String?
+
+  newStatus                String
+
+  remarks                  String?
+
+  changedById             String
+
+  createdAt               DateTime @default(now())
+
+  architectureTracking    ArchitectureTracking@relation(fields:[architectureTrackingId],references:[id])// NOT ADDED TO TABLE
+
+  changedBy              User@relation(fields:[changedById],references:[id])//NOT ADDED TO TABLE
+}
+
+
+
