@@ -9,6 +9,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // The RBAC system is designed to manage user permissions based on their assigned roles. The main entities are User, Role, and Permission, with two join tables: UserRole and RolePermission.
