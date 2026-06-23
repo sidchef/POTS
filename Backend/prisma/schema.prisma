@@ -89,6 +89,18 @@ model User {
   taskDependenciesDeclared TaskDependency[]
 
   taskHistoryChangedBy TaskHistory[]
+
+  qaCycles QaCycle[]
+
+  qaTestScenarios QaTestScenario[]
+
+  qaEvidences QaEvidence[]
+
+  qaHistories QaHistory[]
+
+  securityScans SecurityScan[]
+
+  securityFindingHistories SecurityFindingHistory[]
 }
 
 model UserRole {
@@ -173,7 +185,7 @@ model AuditLog {
 // PHASE 1 : PL enters BRM into POTS --> PL sunmits BRM --> HF & HT notified --> SLA starts --> HF & HT approve/reject
 
 // BRM FORM TABLES 
-// Update Brm model
+// Brm model for brm details
 model Brm {
   id              String   @id @default(uuid())
   brmNumber       String   @unique
@@ -195,7 +207,7 @@ model Brm {
   approvalCycles  BrmApprovalCycle[]
   approvals       BrmApproval[]
   history         BrmHistory[]
-  slas            SlaTracking[]
+  
   ownershipHistory BrmOwnershipHistory[]
   approvalAssignments ApprovalAssignment[]
   
@@ -207,6 +219,8 @@ model Brm {
   architectureTrackings ArchitectureTracking[]
 
   tasks Task[]
+
+  brmMetrics BrmMetric[]
 }
 
 
@@ -226,9 +240,7 @@ enum BrmStatus {
 
   READY_FOR_DEVELOPMENT
 
-  WORK_STARTED
-
-  DEVELOPMENT_IN_PROGRESS
+  CODING_IN_PROGRESS
 
   READY_FOR_QA
 
@@ -240,7 +252,7 @@ enum BrmStatus {
 }
 
 
-// Update BrmApproval model
+// brm approval model to track the approval process and cycles also
 model BrmApproval {
   id                String   @id @default(uuid())
   brmId             String
@@ -269,7 +281,7 @@ enum ApprovalStatus {
   REJECTED
 }
 
-// Update BrmHistory model
+//brm history model to track the changes in brm status and remarks
 model BrmHistory {
   id            String   @id @default(uuid())
   brmId         String
@@ -285,7 +297,7 @@ model BrmHistory {
   brm           Brm @relation(fields:[brmId], references:[id])
 }
 
-// Update Notification model
+// Notification model to send notifications to users about BRM status changes, approvals, and other relevant events.
 model Notification {
   id          String   @id @default(uuid())
   userId      String
@@ -296,7 +308,7 @@ model Notification {
   createdAt   DateTime @default(now())
 }
 
-// Update BrmOwnershipHistory model
+// BrmOwnershipHistory model to track the changes in BRM ownership like changes in PL (Project Lead) assignments, including the old and new PLs, who made the change, and when it occurred.
 model BrmOwnershipHistory {
   id            String @id @default(uuid())
   
@@ -315,7 +327,7 @@ model BrmOwnershipHistory {
   changedAt     DateTime @default(now())
 }
 
-// Update ApprovalAssignment model
+// approval assignment model to track approvals
 model ApprovalAssignment {
   id            String @id @default(uuid())
   
@@ -365,35 +377,101 @@ enum ApprovalCycleStatus {
 
 
 
-// Tracking the SLA for BRM approval
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//         SLA TRACKING TABLES       //
+
+// Main SLA Tracking Table - handles all sla types
 model SlaTracking {
-
   id              String   @id @default(uuid())
-
-  brmId           String
-
+  
+  // Entity identification (polymorphic)
   slaType         SlaType
-
+  entityType      SlaEntityType
+  entityId        String
+  
+  // SLA timeline
   startDate       DateTime
-
   dueDate         DateTime
-
   completedDate   DateTime?
-
   breached        Boolean  @default(false)
-
+  breachedAt      DateTime?
+  
+  // Additional info
+  remarks         String?
+  
+  // Audit
   createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  brm             Brm @relation(fields:[brmId], references:[id])
+
+  
+  @@index([entityType, entityId])
+  @@index([slaType])
+  @@index([dueDate])
+  @@index([breached])
 }
 
-
-
-// SLA types currently added brmreview later will add QA revies and security scan review
 enum SlaType {
-
   BRM_REVIEW
+  ARCHITECTURE_REVIEW
+  TASK_COMPLETION
+  QA_REVIEW
+  SECURITY_SCAN
 }
+
+
+enum SlaEntityType {
+  BRM
+  ARCHITECTURE
+  TASK
+  QA
+  SECURITY
+}
+
+
+// Historical SLA performance metrics
+model SlaMetric {
+  id                String   @id @default(uuid())
+  
+  entityType        SlaEntityType
+  slaType           SlaType
+  
+  totalSlas         Int       @default(0)
+  completedOnTime   Int       @default(0)
+  breachedSlas      Int       @default(0)
+  
+  completionRate    Float     @default(0)  // Percentage
+  averageDuration   Int       @default(0)  // in hours
+  
+  month             Int
+  year              Int
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+
+  
+  @@unique([entityType, slaType, month, year])
+  @@index([entityType])
+  @@index([slaType])
+}
+
+
 
 
 
@@ -656,6 +734,8 @@ model Task {
 
   taskNumber      String @unique
 
+  parentTaskId    String?
+
   title           String
 
   description     String
@@ -691,6 +771,14 @@ model Task {
   history       TaskHistory[]
 
   //taskProgressUpdates TaskProgressUpdate[]
+
+  qaCycles QaCycle[]
+
+  securityScans SecurityScan[]
+
+  securityFindings SecurityFinding[]
+
+  taskMetrics TaskMetric[]
 }
 
 
@@ -724,6 +812,16 @@ enum TaskStatus {
   QA_IN_PROGRESS
 
   QA_DONE
+
+  SECURITY_ASSIGNED
+
+  SECURITY_IN_PROGRESS
+
+  SECURITY_FAILED
+
+  SECURITY_PASSED
+
+  REMEDIATION_REQUIRED
 }
 
 
@@ -867,6 +965,411 @@ model TaskHistory {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//PHASE 4: TASK ASSIGNED TO QA --> QA LOGS TEST SCENARIO WITH EVIDENCE --> ALL TASKS QA COMPLETED --> POTS ROUTES THE BRM TO TSP SEC
+
+
+
+model QaCycle {
+
+  id            String @id @default(uuid())
+
+  taskId        String
+
+  assignedQaId  String
+
+  status        QaCycleStatus
+
+  assignedAt    DateTime @default(now())
+
+  completedAt   DateTime?
+
+  task          Task @relation(fields:[taskId],references:[id])
+
+  assignedQa     User @relation(fields:[assignedQaId],references:[id])
+
+  qaTestScenarios QaTestScenario[]
+
+  qaHistories QaHistory[]
+}
+
+
+enum QaCycleStatus {
+
+  ASSIGNED
+
+  IN_PROGRESS
+
+  COMPLETED
+
+  FAILED
+}
+
+
+
+model QaTestScenario {
+
+  id            String @id @default(uuid())
+
+  qaCycleId     String
+
+  scenarioNo    String
+
+  title         String
+
+  description   String
+
+  expectedResult String
+
+  status        ScenarioStatus
+
+  createdById   String
+
+  createdAt     DateTime @default(now())
+
+  qaCycle       QaCycle @relation(fields:[qaCycleId],references:[id])
+
+  createdBy     User @relation(fields:[createdById],references:[id])
+
+  qaEvidences QaEvidence[]
+}
+
+
+
+enum ScenarioStatus {
+
+  NOT_STARTED
+
+  IN_PROGRESS
+
+  PASSED
+
+  FAILED
+}
+
+
+model QaEvidence {
+
+  id              String @id @default(uuid())
+
+  scenarioId      String
+
+  fileName        String
+
+  fileUrl         String
+
+  fileType        EvidenceType
+
+  uploadedById    String
+
+  uploadedAt      DateTime @default(now())
+
+  qaTestScenario   QaTestScenario @relation(fields:[scenarioId],references:[id])
+
+  uploadedBy       User @relation(fields:[uploadedById],references:[id])
+}
+
+
+enum EvidenceType {
+
+  SCREENSHOT
+
+  DOCUMENT
+}
+
+
+
+model QaHistory {
+
+  id            String @id @default(uuid())
+
+  qaCycleId     String
+
+  oldStatus     String?
+
+  newStatus     String
+
+  remarks       String?
+
+  changedById   String
+
+  createdAt     DateTime @default(now())
+
+  qaCycle       QaCycle @relation(fields:[qaCycleId],references:[id])
+
+  changedBy     User @relation(fields:[changedById],references:[id])
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//PHASE 5: TSP SEC SCANS THE TASK --> FINDINGS ARE LOGGED --> IF ANY FINDINGS PRESENT --> REMEDIATION TASK IS CREATED --> 
+
+model SecurityScan {
+
+  id              String @id @default(uuid())
+
+  taskId          String
+
+  assignedSecId   String
+
+  status          SecurityScanStatus
+
+  scanNumber      Int
+
+  scannedAt       DateTime?
+
+  completedAt     DateTime?
+
+  createdAt       DateTime @default(now())
+
+  task            Task @relation(fields:[taskId],references:[id])
+
+  assignedSec     User @relation(fields:[assignedSecId],references:[id])
+
+  securityFindings SecurityFinding[]
+
+
+}
+
+
+
+enum SecurityScanStatus {
+
+  ASSIGNED
+
+  IN_PROGRESS
+
+  COMPLETED
+}
+
+
+model SecurityFinding {
+
+  id              String @id @default(uuid())
+
+  securityScanId  String
+
+  taskId          String
+
+  title           String
+
+  description     String
+
+  severity        FindingSeverity
+
+  status          FindingStatus
+
+  createdAt       DateTime @default(now())
+
+  closedAt        DateTime?
+
+  securityFindingTask Task @relation(fields:[taskId],references:[id]) 
+
+  securityScan     SecurityScan @relation(fields:[securityScanId],references:[id])
+
+  securityFindingHistories SecurityFindingHistory[]
+}
+
+
+
+enum FindingSeverity {
+
+  CRITICAL
+
+  HIGH
+
+  MEDIUM
+
+  LOW
+}
+
+
+
+enum FindingStatus {
+
+  OPEN
+
+  REMEDIATION_IN_PROGRESS
+
+  CLOSED
+}
+
+
+
+model SecurityFindingHistory {
+
+  id              String @id @default(uuid())
+
+  findingId       String
+
+  oldStatus       String?
+
+  newStatus       String
+
+  remarks         String?
+
+  changedById     String
+
+  historyfindind  SecurityFinding @relation(fields:[findingId],references:[id])
+
+  changedBy       User @relation(fields:[changedById],references:[id])
+
+  createdAt       DateTime @default(now())
+}
+
+
+
+
+
+
+
+
+
+
+
+
+//METRICS CALCULATION TABLES
+
+model BrmMetric {
+
+  id                      String @id @default(uuid())
+
+  brmId                   String @unique
+
+  overallStartDate        DateTime
+
+  overallEndDate          DateTime
+
+  totalDurationDays       Int
+
+  approvalSlaHours        Int
+
+  approvalBreached        Boolean
+
+  approvalResubmissions   Int
+
+  architectureSlaHours    Int
+
+  architectureBreached    Boolean
+
+  architectureResubmits   Int
+
+  totalTasks              Int
+
+  completedTasks          Int
+
+  totalQaCycles           Int
+
+  totalSecurityScans      Int
+
+  totalFindings           Int
+
+  criticalFindings        Int
+
+  highFindings            Int
+
+  mediumFindings          Int
+
+  lowFindings             Int
+
+  totalRemediationTasks   Int
+
+  createdAt               DateTime @default(now())
+
+  brm                    Brm @relation(fields:[brmId],references:[id])
+}
+
+
+
+
+model TaskMetric {
+
+  id                     String @id @default(uuid())
+
+  taskId                 String @unique
+
+  startDate              DateTime
+
+  endDate                DateTime
+
+  durationHours          Int
+
+  qaCycles               Int
+
+  securityScans          Int
+
+  remediationCount       Int
+
+  totalFindings          Int
+
+  criticalFindings       Int
+
+  highFindings           Int
+
+  mediumFindings         Int
+
+  lowFindings            Int
+
+  createdAt              DateTime @default(now())
+
+  task                   Task @relation(fields:[taskId],references:[id])
+}
 
 
 
