@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import Navbar from '../../components/Navbar.jsx';
 import { BrmStatusBadge, PriorityBadge } from '../../components/BrmStatusBadge.jsx';
-import { getMyPendingApprovals, approveBrm, rejectBrm } from '../../api/brm.api.js';
+import { getMyPendingApprovals, approveBrm, rejectBrm, listBrms } from '../../api/brm.api.js';
+import BrmDashboardView from '../../components/dashboard/BrmDashboardView.jsx';
 
 const Modal = ({ title, onClose, children }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -27,6 +28,19 @@ export default function HtDashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [voteModal, setVoteModal] = useState(null);
   const [comments, setComments] = useState('');
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' or 'actions'
+  const [allBrms, setAllBrms] = useState([]);
+
+  // Fetch all BRMs for the Overview Dashboard
+  const fetchAllBrms = useCallback(async () => {
+    try {
+      // Fetching up to 100 to populate the Kanban board properly
+      const res = await listBrms({ page: 1, limit: 100 });
+      setAllBrms(res.data.data.brms);
+    } catch (err) {
+      console.error("Failed to fetch all BRMs for dashboard", err);
+    }
+  }, []);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -44,6 +58,7 @@ export default function HtDashboard() {
   }, []);
 
   useEffect(() => { fetchPending(); }, [fetchPending]);
+   useEffect(() => { fetchPending(); fetchAllBrms();}, [fetchPending, fetchAllBrms]);
 
   const handleVote = async () => {
     if (voteModal.decision === 'REJECTED' && !comments.trim()) {
@@ -75,7 +90,28 @@ export default function HtDashboard() {
 
       <Navbar title="Head Technology Dashboard" />
 
-      <div className="flex-1 p-6 max-w-5xl mx-auto w-full">
+      <div className="flex-1 p-6 max-w-7xl mx-auto w-full">
+
+       {/* ─── NEW NAVIGATION TABS ─── */}
+        <div className="flex gap-4 mb-6 border-b border-slate-700 pb-2">
+          <button 
+            onClick={() => setActiveTab('overview')} 
+            className={`pb-2 px-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'overview' ? 'border-brand-500 text-brand-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+          >
+            Overview Dashboard
+          </button>
+          <button 
+            onClick={() => setActiveTab('actions')} 
+            className={`pb-2 px-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'actions' ? 'border-brand-500 text-brand-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+          >
+            Pending Approvals
+          </button>
+        </div>
+        {/* ─── RENDER DASHBOARD OR PENDING APPROVALS ─── */}
+        {activeTab === 'overview' ? (
+          <BrmDashboardView brms={allBrms} />
+        ) : (
+          <>
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-white">Pending Approvals</h1>
           <p className="text-slate-400 text-sm mt-0.5">Review and approve or reject submitted BRMs</p>
@@ -169,6 +205,8 @@ export default function HtDashboard() {
               );
             })}
           </div>
+        )}
+        </>
         )}
       </div>
 

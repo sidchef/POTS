@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import Navbar from '../../components/Navbar.jsx';
 import { BrmStatusBadge, PriorityBadge } from '../../components/BrmStatusBadge.jsx';
 import { createBrm, updateBrm, submitBrm, listBrms, getBrm } from '../../api/brm.api.js';
+import BrmDashboardView from '../../components/dashboard/BrmDashboardView.jsx';
+
 
 // ─── Shared UI atoms ────────────────────────────────────────────────────────
 const Modal = ({ title, onClose, children, wide }) => (
@@ -55,6 +57,8 @@ export default function PlDashboard() {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('');
   const [toast, setToast] = useState(null);
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' or 'actions'
+
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
@@ -168,6 +172,26 @@ export default function PlDashboard() {
       <Navbar title="Product Lead Dashboard" />
 
       <div className="flex-1 p-6 max-w-7xl mx-auto w-full">
+
+        <div className="flex gap-4 mb-6 border-b border-slate-700 pb-2">
+          <button 
+            onClick={() => setActiveTab('overview')} 
+            className={`pb-2 px-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'overview' ? 'border-brand-500 text-brand-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+          >
+            Overview Dashboard
+          </button>
+          <button 
+            onClick={() => setActiveTab('actions')} 
+            className={`pb-2 px-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'actions' ? 'border-brand-500 text-brand-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+          >
+            Create BRM 
+          </button>
+        </div>
+        {/* ─── RENDER DASHBOARD OR ACTION ITEMS ─── */}
+        {activeTab === 'overview' ? (
+          <BrmDashboardView brms={brms} />
+        ) : (
+          <>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -307,6 +331,8 @@ export default function PlDashboard() {
               </button>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
 
