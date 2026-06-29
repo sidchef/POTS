@@ -48,7 +48,7 @@ export default function Login() {
             </svg>
           </div>
           <h1 className="text-3xl font-bold text-white tracking-tight">POTS</h1>
-          <p className="text-slate-400 mt-1 text-sm">Project Operations Tracking System</p>
+          <p className="text-slate-400 mt-1 text-sm">Project Oversight & Transparency System</p>
         </div>
 
         {/* Card */}

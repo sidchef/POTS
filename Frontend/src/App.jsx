@@ -4,12 +4,13 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import AdminDashboard from './pages/dashboards/AdminDashboard';
 import PlaceholderDashboard from './pages/dashboards/PlaceholderDashboard';
+import PlDashboard from './pages/dashboards/PlDashboard';
+import HfDashboard from './pages/dashboards/HfDashboard';
+import HtDashboard from './pages/dashboards/HtDashboard';
+
 
 // Each role can ONLY access their own dashboard path
 const roleRoutes = [
-  { path: '/pl',       roles: ['PRODUCT_LEAD'] },
-  { path: '/hf',       roles: ['HEAD_FUNCTIONAL'] },
-  { path: '/ht',       roles: ['HEAD_TECHNOLOGY'] },
   { path: '/tm',       roles: ['TEAM_MEMBER'] },
   { path: '/tsp-tl',   roles: ['TSP_TEAM_LEAD'] },
   { path: '/tsp-tm',   roles: ['TSP_TEAM_MEMBER'] },
@@ -33,6 +34,26 @@ export default function App() {
               <AdminDashboard />
             </ProtectedRoute>
           } />
+
+          {/* Role dashboards */}
+          <Route path="/pl" element={
+          <ProtectedRoute allowedRoles={['PRODUCT_LEAD']}>
+          <PlDashboard />
+          </ProtectedRoute>
+          } />
+          <Route path="/hf" element={
+          <ProtectedRoute allowedRoles={['HEAD_FUNCTIONAL']}>
+          <HfDashboard />
+          </ProtectedRoute>
+          }  />
+          <Route path="/ht" element={
+          <ProtectedRoute allowedRoles={['HEAD_TECHNOLOGY']}>
+          <HtDashboard />
+          </ProtectedRoute>
+          } />
+
+
+
 
           {/* Role dashboards — each restricted to its own role */}
           {roleRoutes.map(({ path, roles }) => (

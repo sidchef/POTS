@@ -6,6 +6,7 @@ import prisma from "../config/prisma.js";
 import bcrypt from "bcryptjs";
 import ApiError from "../utils/ApiError.js";
 import { logAction } from "./audit.service.js";
+import { sendWelcomeEmail } from "./email.service.js";
 
 // GET ALL USERS with their roles
 export const getAllUsers = async ({ page = 1, limit = 10, search, roleFilter }) => {
@@ -97,6 +98,8 @@ export const createUser = async ({ employeeId, firstName, lastName, email, passw
     data: { employeeId, firstName, lastName, email, passwordHash },
   });
 
+
+
   // Assign roles
   if (roleNames && roleNames.length > 0) {
     for (const roleName of roleNames) {
@@ -113,6 +116,16 @@ export const createUser = async ({ employeeId, firstName, lastName, email, passw
     entityId: user.id,
     newValue: { employeeId, email, roles: roleNames },
   });
+
+  // Send welcome email with login credentials
+  await sendWelcomeEmail({
+    toEmail: email,
+    firstName,
+    employeeId,
+    role: roleNames?.join(", ") || "No role assigned",
+    tempPassword: password,
+  });
+
 
   return { id: user.id, employeeId, email, firstName, lastName };
 };

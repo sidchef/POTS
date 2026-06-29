@@ -1,0 +1,100 @@
+import * as brmService from "../services/brm.service.js";
+import * as approvalService from "../services/approval.service.js";
+import ApiResponse from "../utils/ApiResponse.js";
+import ApiError from "../utils/ApiError.js";
+
+// POST /api/brms
+export const createBrm = async (req, res, next) => {
+  try {
+    const { brmNumber,teamName, category, title, description, priority } = req.body;
+    if (!brmNumber||!title || !teamName || !category) {
+      throw new ApiError(400, "brmNumber, title, teamName, and category are required");
+    }
+    const brm = await brmService.createBrm({
+      userId: req.user.id, brmNumber, teamName, category, title, description, priority,
+    });
+    res.status(201).json(new ApiResponse(201, brm, "BRM created successfully"));
+  } catch (err) { next(err); }
+};
+
+// PUT /api/brms/:id
+export const updateBrm = async (req, res, next) => {
+  try {
+    const brm = await brmService.updateBrm({
+      brmId: req.params.id, userId: req.user.id, updates: req.body,
+    });
+    res.status(200).json(new ApiResponse(200, brm, "BRM updated successfully"));
+  } catch (err) { next(err); }
+};
+
+// POST /api/brms/:id/submit
+export const submitBrm = async (req, res, next) => {
+  try {
+    const result = await brmService.submitBrm({
+      brmId: req.params.id, userId: req.user.id, ipAddress: req.ip,
+    });
+    res.status(200).json(new ApiResponse(200, result, "BRM submitted for approval"));
+  } catch (err) { next(err); }
+};
+
+// GET /api/brms/:id
+export const getBrmById = async (req, res, next) => {
+  try {
+    const brm = await brmService.getBrmById(req.params.id);
+    res.status(200).json(new ApiResponse(200, brm, "BRM fetched"));
+  } catch (err) { next(err); }
+};
+
+// GET /api/brms
+export const listBrms = async (req, res, next) => {
+  try {
+    const { status, priority, page, limit } = req.query;
+    const result = await brmService.listBrms({
+      userId: req.user.id,
+      roles: req.user.roles,
+      status, priority,
+      page: parseInt(page) || 1,
+      limit: parseInt(limit) || 10,
+    });
+    res.status(200).json(new ApiResponse(200, result, "BRMs fetched"));
+  } catch (err) { next(err); }
+};
+
+// POST /api/brms/:id/approve
+export const approveBrm = async (req, res, next) => {
+  try {
+    const { comments } = req.body;
+    const result = await approvalService.processVote({
+      brmId: req.params.id,
+      approverId: req.user.id,
+      decision: "APPROVED",
+      comments,
+      ipAddress: req.ip,
+    });
+    res.status(200).json(new ApiResponse(200, result, result.message));
+  } catch (err) { next(err); }
+};
+
+// POST /api/brms/:id/reject
+export const rejectBrm = async (req, res, next) => {
+  try {
+    const { comments } = req.body;
+    if (!comments) throw new ApiError(400, "Comments/reason is required when rejecting");
+    const result = await approvalService.processVote({
+      brmId: req.params.id,
+      approverId: req.user.id,
+      decision: "REJECTED",
+      comments,
+      ipAddress: req.ip,
+    });
+    res.status(200).json(new ApiResponse(200, result, result.message));
+  } catch (err) { next(err); }
+};
+
+// GET /api/brms/my-pending-approvals
+export const getMyPendingApprovals = async (req, res, next) => {
+  try {
+    const result = await approvalService.getMyPendingApprovals(req.user.id);
+    res.status(200).json(new ApiResponse(200, result, "Pending approvals fetched"));
+  } catch (err) { next(err); }
+};

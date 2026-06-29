@@ -190,6 +190,8 @@ model AuditLog {
 model Brm {
   id              String   @id @default(uuid())
   brmNumber       String   @unique
+  TeamName        String
+  Category        String
   title           String
   description     String?
   priority        String?
@@ -249,7 +251,7 @@ enum BrmStatus {
 
   SECURITY
 
-  CLOSED
+  COMPLETED
 }
 
 

@@ -71,11 +71,14 @@ export const register = async ({ employeeId, firstName, lastName, email, passwor
 
 // LOGIN
 export const login = async ({ email, password }) => {
-  // Find user
-  const user = await getUserWithPermissions(
-    (await prisma.user.findUnique({ where: { email } }))?.id
-  );
-
+  // Find user by email first
+  const existingUser = await prisma.user.findUnique({ where: { email } });
+  
+  if (!existingUser) {
+    throw new ApiError(401, "Invalid email or password");
+  }
+  // Now fetch full permissions safely
+  const user = await getUserWithPermissions(existingUser.id);
   if (!user) throw new ApiError(401, "Invalid email or password");
   if (!user.isActive) throw new ApiError(403, "Your account has been deactivated");
 

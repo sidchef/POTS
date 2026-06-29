@@ -8,6 +8,10 @@ import rateLimit from "express-rate-limit";
 import errorHandler from "./middleware/error.middleware.js";
 import authRoutes from "./routes/auth.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import brmRoutes from "./routes/brm.routes.js";
+import notificationRoutes from "./routes/notification.routes.js";
+
+
 
 const app = express();
 
@@ -42,7 +46,7 @@ const globalLimiter = rateLimit({
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20, // max 20 login attempts per 15 min
+  max: 50, // max 20 login attempts per 15 min
   message: { success: false, message: "Too many authentication attempts. Please wait 15 minutes." },
 });
 
@@ -73,6 +77,9 @@ app.get("/api/health", (req, res) => {
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/brms", brmRoutes);
+app.use("/api/notifications", notificationRoutes);
+
 
 // ─── 404 Handler ────────────────────────────────────────────────────────────
 app.use((req, res) => {
