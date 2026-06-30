@@ -66,7 +66,7 @@ export default function AdminDashboard() {
 
   // Create user form
   const [createForm, setCreateForm] = useState({
-    employeeId: '', firstName: '', lastName: '', email: '', password: '', roleNames: [],
+    employeeId: '', firstName: '', lastName: '', email: '', roleNames: [],
   });
 
   // Edit role form
@@ -113,7 +113,7 @@ export default function AdminDashboard() {
       await api.post('/admin/users', createForm);
       showToast('User created successfully');
       setShowCreate(false);
-      setCreateForm({ employeeId: '', firstName: '', lastName: '', email: '', password: '', roleNames: [] });
+      setCreateForm({ employeeId: '', firstName: '', lastName: '', email: '', roleNames: [] });
       fetchUsers();
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to create user', 'error');
@@ -352,7 +352,6 @@ export default function AdminDashboard() {
             </div>
             <Input label="Employee ID" value={createForm.employeeId} onChange={e => setCreateForm(f => ({ ...f, employeeId: e.target.value }))} required placeholder="EMP-0001" />
             <Input label="Email" type="email" value={createForm.email} onChange={e => setCreateForm(f => ({ ...f, email: e.target.value }))} required placeholder="john@pots.com" />
-            <Input label="Password" type="password" value={createForm.password} onChange={e => setCreateForm(f => ({ ...f, password: e.target.value }))} required placeholder="Min 6 characters" />
 
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">Assign Roles</label>

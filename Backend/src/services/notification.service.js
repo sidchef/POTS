@@ -1,17 +1,25 @@
 import prisma from "../config/prisma.js";
+import { notificationQueue } from "../config/queue.js"; // notification queue
 
-// Create a single notification
+// Queue a single notification
 export const createNotification = async ({ userId, title, message }) => {
-  return await prisma.notification.create({
-    data: { userId, title, message },
+  // Add job to the queue instead of awaiting prisma.create
+  await notificationQueue.add('create-notification', {
+    type: 'create',
+    data: { userId, title, message }
   });
 };
 
-// Notify multiple users at once
+// Queue multiple notifications at once
 export const notifyMany = async (userIds, title, message) => {
   if (!userIds || userIds.length === 0) return;
   const notifications = userIds.map((userId) => ({ userId, title, message }));
-  await prisma.notification.createMany({ data: notifications });
+  
+  // Add job to the queue
+  await notificationQueue.add('create-many-notifications', {
+    type: 'createMany',
+    data: notifications
+  });
 };
 
 // Get notifications for a user

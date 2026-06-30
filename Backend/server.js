@@ -2,6 +2,9 @@ import "dotenv/config";
 import app from "./src/app.js";
 import prisma from "./src/config/prisma.js";
 import { verifyEmailConnection } from "./src/config/email.js";
+// Start BullMQ Workers
+import './src/workers/notification.worker.js';
+import './src/workers/email.worker.js';
 
 const PORT = process.env.PORT || 3000;
 

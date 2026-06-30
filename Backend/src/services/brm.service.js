@@ -2,11 +2,8 @@ import prisma from "../config/prisma.js";
 import ApiError from "../utils/ApiError.js";
 import { logAction } from "./audit.service.js";
 import { notifyMany, createNotification, getUsersByRole } from "./notification.service.js";
-import {
-  sendBrmSubmittedEmail,
-  sendBrmRejectedEmail,
-  sendBrmApprovedEmail,
-} from "./email.service.js";
+import { emailQueue } from "../config/queue.js";
+
 
 
 
@@ -48,7 +45,9 @@ export const updateBrm = async ({ brmId, userId, updates }) => {
   const brm = await prisma.brm.findUnique({ where: { id: brmId } });
   if (!brm) throw new ApiError(404, "BRM not found");
   if (brm.currentPlId !== userId) throw new ApiError(403, "You are not the PL of this BRM");
-  if (brm.currentStatus !== "DRAFT") throw new ApiError(400, `BRM cannot be edited in status: ${brm.currentStatus}`);
+  if (brm.currentStatus !== "DRAFT" && brm.currentStatus !== "REJECTED") {
+    throw new ApiError(400, `BRM cannot be edited in status: ${brm.currentStatus}`);
+  }
 
   const updated = await prisma.brm.update({
     where: { id: brmId },
@@ -188,15 +187,18 @@ export const submitBrm = async ({ brmId, userId, ipAddress }) => {
   const allApproverUsers = [...hfUsers, ...htUsers];
   const pl = await prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true } });
 
-  await sendBrmSubmittedEmail({
+  await emailQueue.add('send-email', {
+  type: 'sendBrmSubmittedEmail',
+  payload: {
     approvers: allApproverUsers,
     brmNumber: brm.brmNumber,
     brmTitle: brm.title,
     teamName: brm.TeamName,
     priority: brm.priority,
     dueDate: result.dueDate,
-    submittedByName: `${pl.firstName} ${pl.lastName}`,
-  });
+    submittedByName: `${pl.firstName} ${pl.lastName}`
+  }
+});
 
 
   await createNotification({

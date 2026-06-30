@@ -27,20 +27,18 @@ export const getUserById = async (req, res, next) => {
 // POST /api/admin/users
 export const createUser = async (req, res, next) => {
   try {
-    const { employeeId, firstName, lastName, email, password, roleNames } = req.body;
-
-    if (!employeeId || !firstName || !lastName || !email || !password) {
-      throw new ApiError(400, "All fields required: employeeId, firstName, lastName, email, password");
+    const { employeeId, firstName, lastName, email, roleNames } = req.body; 
+    if (!employeeId || !firstName || !lastName || !email) { 
+      throw new ApiError(400, "All fields required: employeeId, firstName, lastName, email");
     }
     if (!roleNames || roleNames.length === 0) {
       throw new ApiError(400, "At least one role must be assigned");
     }
-
     const user = await adminService.createUser({
-      employeeId, firstName, lastName, email, password, roleNames,
+      employeeId, firstName, lastName, email, roleNames, 
       adminId: req.user.id,
     });
-    res.status(201).json(new ApiResponse(201, user, "User created successfully"));
+    res.status(201).json(new ApiResponse(201, user, "User created successfully. Credentials sent via email."));
   } catch (err) { next(err); }
 };
 

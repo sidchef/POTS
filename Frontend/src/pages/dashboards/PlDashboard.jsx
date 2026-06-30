@@ -301,10 +301,16 @@ export default function PlDashboard() {
                             </>
                           )}
                           {brm.currentStatus === 'REJECTED' && (
-                            <button onClick={() => setSubmitTarget(brm)}
-                              className="px-2.5 py-1 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 text-xs border border-yellow-500/30">
-                              Resubmit
-                            </button>
+                            <>
+                              <button onClick={() => openEdit(brm)}
+                                className="px-2.5 py-1 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs border border-blue-500/30">
+                                Edit
+                              </button>
+                              <button onClick={() => setSubmitTarget(brm)}
+                                className="px-2.5 py-1 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 text-xs border border-yellow-500/30">
+                                Resubmit
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>

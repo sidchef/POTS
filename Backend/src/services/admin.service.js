@@ -6,7 +6,8 @@ import prisma from "../config/prisma.js";
 import bcrypt from "bcryptjs";
 import ApiError from "../utils/ApiError.js";
 import { logAction } from "./audit.service.js";
-import { sendWelcomeEmail } from "./email.service.js";
+import { emailQueue } from "../config/queue.js";
+
 
 // GET ALL USERS with their roles
 export const getAllUsers = async ({ page = 1, limit = 10, search, roleFilter }) => {
@@ -84,15 +85,19 @@ export const getUserById = async (userId) => {
   return { ...user, roles: user.roles.map((ur) => ur.role) };
 };
 
+
 // CREATE USER (admin version — can assign any role)
-export const createUser = async ({ employeeId, firstName, lastName, email, password, roleNames, adminId }) => {
+export const createUser = async ({ employeeId, firstName, lastName, email, roleNames, adminId }) => {
   const existingEmail = await prisma.user.findUnique({ where: { email } });
   if (existingEmail) throw new ApiError(409, "A user with this email already exists");
 
   const existingEmp = await prisma.user.findUnique({ where: { employeeId } });
   if (existingEmp) throw new ApiError(409, "A user with this employee ID already exists");
 
-  const passwordHash = await bcrypt.hash(password, 10);
+   // Auto-generate an 8-character secure password (e.g. "a1b2c3D4!")
+  const generatedPassword = Math.random().toString(36).slice(-6) + Math.random().toString(36).slice(-2).toUpperCase() + "!";
+  
+  const passwordHash = await bcrypt.hash(generatedPassword, 10);
 
   const user = await prisma.user.create({
     data: { employeeId, firstName, lastName, email, passwordHash },
@@ -117,15 +122,20 @@ export const createUser = async ({ employeeId, firstName, lastName, email, passw
     newValue: { employeeId, email, roles: roleNames },
   });
 
-  // Send welcome email with login credentials
-  await sendWelcomeEmail({
-    toEmail: email,
+  //Welcome Mail
+  await emailQueue.add('send-email',{
+    type: 'sendWelcomeEmail',
+    payload:{
+        toEmail: email,
     firstName,
     employeeId,
     role: roleNames?.join(", ") || "No role assigned",
-    tempPassword: password,
+    tempPassword: generatedPassword,
+
+    }
   });
 
+ 
 
   return { id: user.id, employeeId, email, firstName, lastName };
 };

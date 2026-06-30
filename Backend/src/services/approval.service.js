@@ -2,11 +2,8 @@ import prisma from "../config/prisma.js";
 import ApiError from "../utils/ApiError.js";
 import { logAction } from "./audit.service.js";
 import { createNotification, notifyMany, getUsersByRole } from "./notification.service.js";
-import {
-  sendBrmSubmittedEmail,
-  sendBrmRejectedEmail,
-  sendBrmApprovedEmail,
-} from "./email.service.js";
+import { emailQueue } from "../config/queue.js";
+
 
 
 // ─── PROCESS VOTE (APPROVE or REJECT) ─────────────────────────────────────────
@@ -103,16 +100,18 @@ export const processVote = async ({ brmId, approverId, decision, comments, ipAdd
       message: `Your BRM ${brm.brmNumber} — "${brm.title}" has been REJECTED. Reason: ${comments || "No reason provided"}. Please review and resubmit.`,
     });
 
-        // Also email the PL
-    await sendBrmRejectedEmail({
-      plEmail: brm.currentPl.email,
+    await emailQueue.add('send-email',{
+        type:'sendBrmRejectedEmail',
+        payload:{
+            plEmail: brm.currentPl.email,
       plName: `${brm.currentPl.firstName} ${brm.currentPl.lastName}`,
       brmNumber: brm.brmNumber,
       brmTitle: brm.title,
       rejectedBy: myApprovalRecord.approverRole.replace(/_/g, " "),
       reason: comments,
-    });
 
+        }
+    })
 
     await logAction({
       userId: approverId,
@@ -174,14 +173,18 @@ export const processVote = async ({ brmId, approverId, decision, comments, ipAdd
       message: `Your BRM ${brm.brmNumber} — "${brm.title}" has been APPROVED by all committee members. You can now assign team members.`,
     });
 
-        // Also email the PL
-    await sendBrmApprovedEmail({
-      plEmail: brm.currentPl.email,
+    await emailQueue.add('send-email',{
+        type:'sendBrmApprovedEmail',
+        payload:{
+            plEmail: brm.currentPl.email,
       plName: `${brm.currentPl.firstName} ${brm.currentPl.lastName}`,
       brmNumber: brm.brmNumber,
       brmTitle: brm.title,
       teamName: brm.TeamName,
-    });
+            
+        }
+    })
+
 
 
     // Notify all Team Members (TM)
@@ -229,7 +232,11 @@ export const processVote = async ({ brmId, approverId, decision, comments, ipAdd
 // ─── GET PENDING APPROVALS for an approver ─────────────────────────────────────
 export const getMyPendingApprovals = async (approverId) => {
   const pendingApprovals = await prisma.brmApproval.findMany({
-    where: { approverId, status: "PENDING" },
+     where: { 
+      approverId, 
+      status: "PENDING",
+      brm: { currentStatus: "SUBMITTED" } // <--- Add this filter!
+    },
     include: {
       brm: {
         select: {

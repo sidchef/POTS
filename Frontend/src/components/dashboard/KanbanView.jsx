@@ -54,7 +54,7 @@ export default function KanbanView({ brms }) {
     <div className="flex gap-6 overflow-x-auto pb-4">
       <Column title="Open" brmsList={openBrms} dotColor="bg-blue-500" />
       <Column title="Done" brmsList={doneBrms} dotColor="bg-emerald-500" />
-      <Column title="Blocked / Rejected" brmsList={blockedBrms} dotColor="bg-red-500" />
+      <Column title="Rejected" brmsList={blockedBrms} dotColor="bg-red-500" />
     </div>
   );
 }
