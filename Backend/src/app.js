@@ -10,6 +10,7 @@ import authRoutes from "./routes/auth.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import brmRoutes from "./routes/brm.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
+import userStoryRoutes from "./routes/userStory.routes.js";
 
 
 
@@ -79,6 +80,7 @@ app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/brms", brmRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/user-stories", userStoryRoutes);
 
 
 // ─── 404 Handler ────────────────────────────────────────────────────────────

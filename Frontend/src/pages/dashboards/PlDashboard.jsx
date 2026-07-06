@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import Navbar from '../../components/Navbar.jsx';
 import { BrmStatusBadge, PriorityBadge } from '../../components/BrmStatusBadge.jsx';
-import { createBrm, updateBrm, submitBrm, listBrms, getBrm } from '../../api/brm.api.js';
+import { createBrm, updateBrm, submitBrm, listBrms, getBrm, assignBrmToTm } from '../../api/brm.api.js';
 import BrmDashboardView from '../../components/dashboard/BrmDashboardView.jsx';
+import api from '../../api/axios.js'; 
 
 
 // ─── Shared UI atoms ────────────────────────────────────────────────────────
@@ -66,6 +67,10 @@ export default function PlDashboard() {
   const [viewTarget, setViewTarget] = useState(null);   // full BRM detail
   const [submitTarget, setSubmitTarget] = useState(null); // BRM to submit
   const [loadingView, setLoadingView] = useState(false);
+  const [showAssignTm, setShowAssignTm] = useState(false);
+  const [assignTarget, setAssignTarget] = useState(null);
+  const [tmList, setTmList] = useState([]);
+  const [selectedTm, setSelectedTm] = useState('');
 
   // Forms
   const [createForm, setCreateForm] = useState(EMPTY_FORM);
@@ -142,6 +147,37 @@ export default function PlDashboard() {
       setViewTarget(null);
     } finally { setLoadingView(false); }
   };
+
+    const openAssignTm = async (brm) => {
+    setAssignTarget(brm);
+    try {
+    const res = await api.get('/brms/users/by-role', { params: { role: 'TEAM_MEMBER' } }); // ⬅️ Changed URL
+    setTmList(res.data.data); // ⬅️ Note: data is directly an array now
+    setShowAssignTm(true);
+  } catch (err) {
+    showToast('Failed to load Team Members', 'error');
+  }
+  };
+
+  const handleAssignTm = async (e) => {
+    e.preventDefault();
+    if (!selectedTm) return showToast('Please select a Team Member', 'error');
+    
+    setSubmitting(true);
+    try {
+      await assignBrmToTm(assignTarget.id, { tmId: selectedTm });
+      showToast('BRM successfully assigned to TM');
+      setShowAssignTm(false);
+      setAssignTarget(null);
+      setSelectedTm('');
+      fetchBrms();
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to assign TM', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
 
   const openEdit = (brm) => {
     setEditForm({
@@ -296,7 +332,7 @@ export default function PlDashboard() {
                               </button>
                               <button onClick={() => setSubmitTarget(brm)}
                                 className="px-2.5 py-1 rounded-lg bg-brand-500/20 hover:bg-brand-500/30 text-brand-400 text-xs border border-brand-500/30">
-                                Submit
+                                Send for Approval
                               </button>
                             </>
                           )}
@@ -311,6 +347,12 @@ export default function PlDashboard() {
                                 Resubmit
                               </button>
                             </>
+                          )}
+                          {brm.currentStatus === 'APPROVED' && (
+                            <button onClick={() => openAssignTm(brm)}
+                             className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs border border-emerald-500/30 transition-all">
+                              Assign to TM
+                              </button>
                           )}
                         </div>
                       </td>
@@ -440,6 +482,40 @@ export default function PlDashboard() {
           </div>
         </Modal>
       )}
+
+            {/* ─── ASSIGN TO TM MODAL ────────────────────────────────────────── */}
+      {showAssignTm && (
+        <Modal title={`Assign BRM ${assignTarget?.brmNumber} to Team Member`} onClose={() => setShowAssignTm(false)}>
+          <form onSubmit={handleAssignTm} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1.5">Select Team Member</label>
+              <select 
+                value={selectedTm} 
+                onChange={(e) => setSelectedTm(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-lg bg-slate-900/60 border border-slate-600/50 text-white focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm"
+                required
+              >
+                <option value="">-- Choose a Team Member --</option>
+                {tmList.map(tm => (
+                  <option key={tm.id} value={tm.id}>{tm.firstName} {tm.lastName} ({tm.employeeId})</option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-700/50">
+              <button type="button" onClick={() => setShowAssignTm(false)}
+                className="px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-700 transition-colors text-sm font-medium">
+                Cancel
+              </button>
+              <button type="submit" disabled={submitting || !selectedTm}
+                className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white transition-colors disabled:opacity-50 text-sm font-medium">
+                {submitting ? 'Assigning...' : 'Confirm Assignment'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
 
       {/* ─── VIEW BRM DETAIL MODAL ───────────────────────────────────── */}
       {viewTarget && (

@@ -2,7 +2,7 @@ import prisma from "../config/prisma.js";
 import ApiError from "../utils/ApiError.js";
 import { logAction } from "./audit.service.js";
 import { notifyMany, createNotification, getUsersByRole } from "./notification.service.js";
-import { emailQueue } from "../config/queue.js";
+import { emailQueue, slaQueue } from "../config/queue.js";
 
 
 
@@ -157,19 +157,21 @@ export const submitBrm = async ({ brmId, userId, ipAddress }) => {
       });
     }
 
-    // 6. Start SLA Tracking
-    await tx.slaTracking.create({
-      data: {
-        slaType: "BRM_REVIEW",
-        entityType: "BRM",
-        entityId: brmId,
-        startDate: now,
-        dueDate,
-      },
-    });
 
     return { cycle, newCycleNumber, dueDate };
   });
+
+  // Calculate milliseconds until SLA expires
+  const delayMs = result.dueDate.getTime() - Date.now();
+  // Schedule the background job to check the BRM when the SLA time runs out!
+  if (delayMs > 0) {
+    await slaQueue.add('check-brm-sla', { 
+      brmId, 
+      cycleId: result.cycle.id 
+    }, { 
+      delay: delayMs 
+    });
+  }
 
   // 7. Send notifications (outside transaction — non-critical)
   const approverIds = [
@@ -245,7 +247,18 @@ export const getBrmById = async (brmId) => {
       approvalAssignments: {
         include: { approver: { select: { id: true, firstName: true, lastName: true } } },
       },
-      history: { orderBy: { createdAt: "desc" } },
+      history: {
+        orderBy: { createdAt: "desc" },
+        include: { changedBy: { select: { firstName: true, lastName: true } } }, // ⬅️ for "by name" in history
+      },
+      userStory: {                           // ⬅️ THIS was missing
+        orderBy: { createdAt: "asc" },
+        include: {
+          createdBy: { select: { id: true, firstName: true, lastName: true } },
+        }
+      },
+
+
     },
   });
 
@@ -269,6 +282,19 @@ export const listBrms = async ({ userId, roles, status, priority, page = 1, limi
 
   if (isOnlyPL) where.currentPlId = userId;
 
+  // TMs only see BRMs assigned to them
+  const isOnlyTM = roles.includes("TEAM_MEMBER") &&
+    !roles.includes("PRODUCT_LEAD") &&
+    !roles.includes("HEAD_FUNCTIONAL") &&
+    !roles.includes("HEAD_TECHNOLOGY") &&
+    !roles.includes("SUPER_ADMIN");
+
+  if (isOnlyTM) {
+    where.brmAssignments = {
+      some: { assignedToId: userId }
+    };
+  }
+
   const [brms, total] = await Promise.all([
     prisma.brm.findMany({
       where,
@@ -286,4 +312,115 @@ export const listBrms = async ({ userId, roles, status, priority, page = 1, limi
     brms,
     pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
   };
+};
+
+// ─── ASSIGN BRM TO TM (Phase 2) ────────────────────────────────────────────────
+export const assignBrmToTm = async (brmId, tmId, plId) => {
+  const brm = await prisma.brm.findUnique({ where: { id: brmId } });
+  if (!brm) throw new ApiError(404, "BRM not found");
+  if (brm.currentStatus !== "APPROVED") {
+    throw new ApiError(400, "Only APPROVED BRMs can be assigned for User Story Creation");
+  }
+
+  // Ensure TM user exists and has TEAM_MEMBER role
+  const tmUser = await prisma.user.findFirst({
+    where: {
+      id: tmId,
+      roles: { some: { role: { name: "TEAM_MEMBER" } } }
+    }
+  });
+  if (!tmUser) throw new ApiError(400, "Assigned user must be an active TEAM_MEMBER");
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Update BRM Status
+    await tx.brm.update({
+      where: { id: brmId },
+      data: { currentStatus: "USER_STORY_CREATION" },
+    });
+
+    // 2. Add history
+    await tx.brmHistory.create({
+      data: {
+        brmId,
+        oldStatus: brm.currentStatus,
+        newStatus: "USER_STORY_CREATION",
+        remarks: `PL assigned BRM to TM (${tmUser.firstName} ${tmUser.lastName})`,
+        changedById: plId,
+      },
+    });
+
+    // 3. Create BrmAssignment
+    // Clear any previous TM assignments if they exist
+    await tx.brmAssignment.updateMany({
+      where: { brmId, assignmentType: "TM", isCurrent: true },
+      data: { isCurrent: false, status: "REASSIGNED", completedAt: new Date() }
+    });
+
+    await tx.brmAssignment.create({
+      data: {
+        brmId,
+        assignmentType: "TM",
+        assignedById: plId,
+        assignedToId: tmId,
+        status: "ASSIGNED",
+      }
+    });
+  });
+
+  // Notify TM
+  await createNotification({
+    userId: tmId,
+    title: "New BRM Assigned",
+    message: `You have been assigned to BRM ${brm.brmNumber} for User Story Creation.`
+  });
+
+  return { message: "BRM assigned successfully to TM" };
+};
+
+// ─── SUBMIT USER STORIES (Phase 2 Completion) ──────────────────────────────────
+export const submitUserStories = async (brmId, tmId) => {
+  const brm = await prisma.brm.findUnique({ where: { id: brmId } });
+  if (!brm) throw new ApiError(404, "BRM not found");
+  if (brm.currentStatus !== "USER_STORY_CREATION") {
+    throw new ApiError(400, "BRM is not in User Story Creation phase");
+  }
+
+  const storiesCount = await prisma.userStory.count({ where: { brmId } });
+  if (storiesCount === 0) {
+    throw new ApiError(400, "You must create at least one user story before submitting.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Update BRM Status
+    await tx.brm.update({
+      where: { id: brmId },
+      data: { currentStatus: "USER_STORIES_CREATED" },
+    });
+
+    // 2. Mark TM assignment as completed
+    await tx.brmAssignment.updateMany({
+      where: { brmId, assignmentType: "TM", assignedToId: tmId, isCurrent: true },
+      data: { status: "COMPLETED", completedAt: new Date(), isCurrent: false }
+    });
+
+    // 3. Add History
+    await tx.brmHistory.create({
+      data: {
+        brmId,
+        oldStatus: "USER_STORY_CREATION",
+        newStatus: "USER_STORIES_CREATED",
+        remarks: `TM created ${storiesCount} user stories and submitted them.`,
+        changedById: tmId,
+      },
+    });
+  });
+
+  // Notify the PL
+  await createNotification({
+    userId: brm.currentPlId,
+    title: "User Stories Submitted",
+    message: `User stories for BRM ${brm.brmNumber} have been submitted by the TM.`
+  });
+
+  return { message: "User stories submitted successfully." };
 };

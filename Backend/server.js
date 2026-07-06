@@ -5,6 +5,7 @@ import { verifyEmailConnection } from "./src/config/email.js";
 // Start BullMQ Workers
 import './src/workers/notification.worker.js';
 import './src/workers/email.worker.js';
+import './src/workers/sla.worker.js';
 
 const PORT = process.env.PORT || 3000;
 

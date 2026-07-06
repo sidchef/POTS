@@ -1,8 +1,7 @@
 import React from 'react';
 import { BrmStatusBadge, PriorityBadge } from '../BrmStatusBadge';
 
-export default function KanbanView({ brms }) {
-  // Map statuses exactly as discussed
+export default function KanbanView({ brms, onCardClick }) {
   const openBrms = brms.filter(b => b.currentStatus !== 'COMPLETED' && b.currentStatus !== 'REJECTED');
   const doneBrms = brms.filter(b => b.currentStatus === 'COMPLETED');
   const blockedBrms = brms.filter(b => b.currentStatus === 'REJECTED');
@@ -21,9 +20,12 @@ export default function KanbanView({ brms }) {
       
       <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
         {brmsList.map(brm => (
-          <div key={brm.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl shadow-sm hover:border-slate-500 transition-colors">
+          <div
+            key={brm.id}
+            onClick={() => onCardClick(brm)}
+            className="bg-slate-800 border border-slate-700 p-4 rounded-xl shadow-sm hover:border-brand-500/60 hover:bg-slate-750 transition-all cursor-pointer group">
             <div className="flex justify-between items-start mb-2">
-              <span className="text-xs font-medium text-slate-400">{brm.brmNumber}</span>
+              <span className="text-xs font-medium text-slate-400 group-hover:text-brand-400 transition-colors">{brm.brmNumber}</span>
               <BrmStatusBadge status={brm.currentStatus} />
             </div>
             <h4 className="text-sm font-medium text-white mb-3 line-clamp-2">{brm.title}</h4>
@@ -35,8 +37,8 @@ export default function KanbanView({ brms }) {
             
             <div className="flex justify-between items-center pt-3 border-t border-slate-700/50">
               <PriorityBadge priority={brm.priority || 'Medium'} />
-              <span className="text-xs text-slate-400">
-                {new Date(brm.createdAt).toLocaleDateString()}
+              <span className="text-xs text-slate-500 group-hover:text-slate-300 transition-colors">
+                {new Date(brm.createdAt).toLocaleDateString()} · View details →
               </span>
             </div>
           </div>

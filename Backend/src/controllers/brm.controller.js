@@ -98,3 +98,22 @@ export const getMyPendingApprovals = async (req, res, next) => {
     res.status(200).json(new ApiResponse(200, result, "Pending approvals fetched"));
   } catch (err) { next(err); }
 };
+
+// POST /api/brms/:id/assign-tm
+export const assignBrmToTm = async (req, res, next) => {
+  try {
+    const { tmId } = req.body;
+    if (!tmId) throw new ApiError(400, "tmId is required");
+    
+    const result = await brmService.assignBrmToTm(req.params.id, tmId, req.user.id);
+    res.status(200).json(new ApiResponse(200, result, "Assigned successfully"));
+  } catch (err) { next(err); }
+};
+
+// POST /api/brms/:id/submit-stories
+export const submitUserStories = async (req, res, next) => {
+  try {
+    const result = await brmService.submitUserStories(req.params.id, req.user.id);
+    res.status(200).json(new ApiResponse(200, result, "Submitted successfully"));
+  } catch (err) { next(err); }
+};

@@ -17,5 +17,6 @@ connection.on('connect', () => {
 // Define our Queues
 export const notificationQueue = new Queue('notificationQueue', { connection });
 export const emailQueue = new Queue('emailQueue', { connection });
+export const slaQueue = new Queue('slaQueue', { connection });
 
 export { connection };
