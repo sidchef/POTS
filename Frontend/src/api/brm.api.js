@@ -12,4 +12,5 @@ export const getMyPendingApprovals = () => api.get('/brms/my-pending-approvals')
 // Phase 2 additions
 export const assignBrmToTm = (id, data) => api.post(`/brms/${id}/assign-tm`, data);
 export const submitUserStories = (id) => api.post(`/brms/${id}/submit-stories`);
+export const assignBrmToTspTl = (id, data) => api.post(`/brms/${id}/assign-tsp-tl`, data);
 

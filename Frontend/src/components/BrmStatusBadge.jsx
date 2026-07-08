@@ -6,6 +6,8 @@ const STATUS_STYLES = {
   USER_STORY_CREATION:   'bg-purple-500/20 text-purple-300 border-purple-500/30',
   USER_STORIES_CREATED:  'bg-violet-500/20 text-violet-300 border-violet-500/30',
   ARCHITECTURE_REVIEW:   'bg-orange-500/20 text-orange-300 border-orange-500/30',
+  ARCHITECTURE_CREATION: 'text-orange-400 bg-orange-500/15 border-orange-500/30',
+  ARCHITECTURE_SUBMITTED: 'text-indigo-400 bg-indigo-500/15 border-indigo-500/30',
   READY_FOR_DEVELOPMENT: 'bg-teal-500/20 text-teal-300 border-teal-500/30',
   CODING_IN_PROGRESS:    'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
   READY_FOR_QA:          'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',

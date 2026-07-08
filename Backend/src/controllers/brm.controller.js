@@ -117,3 +117,13 @@ export const submitUserStories = async (req, res, next) => {
     res.status(200).json(new ApiResponse(200, result, "Submitted successfully"));
   } catch (err) { next(err); }
 };
+
+// POST /api/brms/:id/assign-tsp-tl
+export const assignBrmToTspTl = async (req, res, next) => {
+  try {
+    const { tspTlId } = req.body;
+    if (!tspTlId) throw new ApiError(400, "tspTlId is required");
+    const result = await brmService.assignBrmToTspTl(req.params.id, req.user.id, tspTlId);
+    res.status(200).json(new ApiResponse(200, result, "TSP TL assigned successfully"));
+  } catch (err) { next(err); }
+};

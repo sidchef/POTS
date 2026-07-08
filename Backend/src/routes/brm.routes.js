@@ -3,7 +3,7 @@ import { authenticate, authorize } from "../middleware/auth.middleware.js";
 import {
   createBrm, updateBrm, submitBrm, getBrmById,
   listBrms, approveBrm, rejectBrm, getMyPendingApprovals,
-  assignBrmToTm, submitUserStories // ⬅️ Added new functions here
+  assignBrmToTm, submitUserStories, assignBrmToTspTl // ⬅️ Added new functions here
 } from "../controllers/brm.controller.js";
 import prisma from "../config/prisma.js";
 
@@ -42,6 +42,8 @@ router.post("/:id/reject", authorize("COMMITTEE_REVIEW"), rejectBrm);
 // Phase 2: User Story Assignment & Submission
 router.post("/:id/assign-tm", authorize("CREATE_BRM"), assignBrmToTm); 
 router.post("/:id/submit-stories", authorize("TASK_BOARD"), submitUserStories); 
+router.post("/:id/assign-tsp-tl", authorize("CREATE_BRM"), assignBrmToTspTl);
+
 
 
 export default router;

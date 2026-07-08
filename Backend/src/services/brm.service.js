@@ -295,6 +295,18 @@ export const listBrms = async ({ userId, roles, status, priority, page = 1, limi
     };
   }
 
+   // TSP TLs only see BRMs assigned to them for Architecture
+  const isOnlyTspTl = roles.includes("TSP_TEAM_LEAD") &&
+    !roles.includes("PRODUCT_LEAD") &&
+    !roles.includes("HEAD_FUNCTIONAL") &&
+    !roles.includes("HEAD_TECHNOLOGY") &&
+    !roles.includes("SUPER_ADMIN");
+  if (isOnlyTspTl) {
+    where.brmAssignments = {
+      some: { assignedToId: userId, assignmentType: "TSP_TL" }
+    };
+  }
+
   const [brms, total] = await Promise.all([
     prisma.brm.findMany({
       where,
@@ -377,7 +389,7 @@ export const assignBrmToTm = async (brmId, tmId, plId) => {
   return { message: "BRM assigned successfully to TM" };
 };
 
-// ─── SUBMIT USER STORIES (Phase 2 Completion) ──────────────────────────────────
+// ─── SUBMIT USER STORIES (Phase 2 ) ──────────────────────────────────
 export const submitUserStories = async (brmId, tmId) => {
   const brm = await prisma.brm.findUnique({ where: { id: brmId } });
   if (!brm) throw new ApiError(404, "BRM not found");
@@ -423,4 +435,63 @@ export const submitUserStories = async (brmId, tmId) => {
   });
 
   return { message: "User stories submitted successfully." };
+};
+
+
+// ─── ASSIGN TSP TL FOR ARCHITECTURE (Phase 2) ─────────────────────────────────
+export const assignBrmToTspTl = async (brmId, plId, tspTlId) => {
+  const brm = await prisma.brm.findUnique({ where: { id: brmId } });
+  
+  if (!brm) throw new ApiError(404, "BRM not found");
+  if (brm.currentPlId !== plId) throw new ApiError(403, "You are not the PL for this BRM");
+  
+  // Can only assign TSP TL if user stories are created
+  if (brm.currentStatus !== "USER_STORIES_CREATED") {
+    throw new ApiError(400, "Can only assign TSP TL after user stories are created");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Move to Architecture Phase
+    await tx.brm.update({
+      where: { id: brmId },
+      data: { currentStatus: "ARCHITECTURE_CREATION" }
+    });
+
+    // 2. Track history
+    await tx.brmHistory.create({
+      data: {
+        brmId,
+        oldStatus: "USER_STORIES_CREATED",
+        newStatus: "ARCHITECTURE_CREATION",
+        remarks: "Assigned to TSP TL for Architecture Design",
+        changedById: plId
+      }
+    });
+
+    // 3. Clear previous TSP_TL assignments
+    await tx.brmAssignment.updateMany({
+      where: { brmId, assignmentType: "TSP_TL", isCurrent: true },
+      data: { isCurrent: false, status: "REASSIGNED", completedAt: new Date() }
+    });
+
+    // 4. Create new assignment
+    await tx.brmAssignment.create({
+      data: {
+        brmId,
+        assignmentType: "TSP_TL",
+        assignedById: plId,
+        assignedToId: tspTlId,
+        status: "ASSIGNED",
+      }
+    });
+  });
+
+  // Notify TSP TL
+  await createNotification({
+    userId: tspTlId,
+    title: "New Architecture Assignment",
+    message: `You have been assigned as TSP TL for BRM ${brm.brmNumber} to design the architecture.`
+  });
+
+  return { message: "BRM assigned successfully to TSP TL" };
 };

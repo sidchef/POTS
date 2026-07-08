@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Navbar from '../../components/Navbar.jsx';
 import { BrmStatusBadge, PriorityBadge } from '../../components/BrmStatusBadge.jsx';
-import { createBrm, updateBrm, submitBrm, listBrms, getBrm, assignBrmToTm } from '../../api/brm.api.js';
+import { createBrm, updateBrm, submitBrm, listBrms, getBrm, assignBrmToTm, assignBrmToTspTl } from '../../api/brm.api.js';
 import BrmDashboardView from '../../components/dashboard/BrmDashboardView.jsx';
 import api from '../../api/axios.js'; 
 
@@ -71,6 +71,11 @@ export default function PlDashboard() {
   const [assignTarget, setAssignTarget] = useState(null);
   const [tmList, setTmList] = useState([]);
   const [selectedTm, setSelectedTm] = useState('');
+  const [showAssignTspTl, setShowAssignTspTl] = useState(false);
+  const [tspTlList, setTspTlList] = useState([]);
+  const [assignTspTlTarget, setAssignTspTlTarget] = useState(null);
+  const [selectedTspTl, setSelectedTspTl] = useState('');
+
 
   // Forms
   const [createForm, setCreateForm] = useState(EMPTY_FORM);
@@ -177,6 +182,38 @@ export default function PlDashboard() {
       setSubmitting(false);
     }
   };
+
+
+    const openAssignTspTl = async (brm) => {
+    setAssignTspTlTarget(brm);
+    try {
+      const res = await api.get('/brms/users/by-role', { params: { role: 'TSP_TEAM_LEAD' } });
+      setTspTlList(res.data.data);
+      setShowAssignTspTl(true);
+    } catch (err) {
+      showToast('Failed to load TSP Team Leads', 'error');
+    }
+  };
+
+  const handleAssignTspTl = async (e) => {
+    e.preventDefault();
+    if (!selectedTspTl) return showToast('Please select a TSP Team Lead', 'error');
+    
+    setSubmitting(true);
+    try {
+      await assignBrmToTspTl(assignTspTlTarget.id, { tspTlId: selectedTspTl });
+      showToast('BRM successfully assigned to TSP TL');
+      setShowAssignTspTl(false);
+      setAssignTspTlTarget(null);
+      setSelectedTspTl('');
+      fetchBrms();
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to assign TSP TL', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
 
 
   const openEdit = (brm) => {
@@ -354,6 +391,13 @@ export default function PlDashboard() {
                               Assign to TM
                               </button>
                           )}
+                            {brm.currentStatus === 'USER_STORIES_CREATED' && (
+                              <button onClick={() => openAssignTspTl(brm)}
+                                className="px-2.5 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 text-xs border border-purple-500/30 transition-all">
+                                Assign TSP TL
+                              </button>
+                            )}
+
                         </div>
                       </td>
                     </tr>
@@ -483,38 +527,48 @@ export default function PlDashboard() {
         </Modal>
       )}
 
-            {/* ─── ASSIGN TO TM MODAL ────────────────────────────────────────── */}
-      {showAssignTm && (
-        <Modal title={`Assign BRM ${assignTarget?.brmNumber} to Team Member`} onClose={() => setShowAssignTm(false)}>
-          <form onSubmit={handleAssignTm} className="space-y-4">
+      {/* ─── ASSIGN TO TM MODAL ────────────────────────────────────────── */}
+      {showAssignTm && assignTarget && (
+        <Modal title={`Assign TM to ${assignTarget.brmNumber}`} onClose={() => { setShowAssignTm(false); setAssignTarget(null); }}>
+          <form onSubmit={handleAssignTm} className="space-y-5">
+            <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-700/60 mb-2">
+              <p className="text-white text-sm font-medium mb-1">{assignTarget.title}</p>
+              <p className="text-slate-400 text-xs">{assignTarget.TeamName} · {assignTarget.Category}</p>
+            </div>
+            
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">Select Team Member</label>
+              <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                Select Team Member <span className="text-red-400">*</span>
+              </label>
               <select 
                 value={selectedTm} 
                 onChange={(e) => setSelectedTm(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-lg bg-slate-900/60 border border-slate-600/50 text-white focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm"
                 required
               >
-                <option value="">-- Choose a Team Member --</option>
+                <option value="">Select Team Member</option>
                 {tmList.map(tm => (
-                  <option key={tm.id} value={tm.id}>{tm.firstName} {tm.lastName} ({tm.employeeId})</option>
+                  <option key={tm.id} value={tm.id}>
+                    {tm.firstName} {tm.lastName} ({tm.employeeId})
+                  </option>
                 ))}
               </select>
             </div>
             
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-700/50">
-              <button type="button" onClick={() => setShowAssignTm(false)}
-                className="px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-700 transition-colors text-sm font-medium">
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={() => { setShowAssignTm(false); setAssignTarget(null); }}
+                className="flex-1 py-2.5 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-700 text-sm font-medium transition-colors">
                 Cancel
               </button>
               <button type="submit" disabled={submitting || !selectedTm}
-                className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 text-white transition-colors disabled:opacity-50 text-sm font-medium">
+                className="flex-1 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium transition-colors">
                 {submitting ? 'Assigning...' : 'Confirm Assignment'}
               </button>
             </div>
           </form>
         </Modal>
       )}
+
 
 
       {/* ─── VIEW BRM DETAIL MODAL ───────────────────────────────────── */}
@@ -591,6 +645,49 @@ export default function PlDashboard() {
           )}
         </Modal>
       )}
+
+                  {/* ─── ASSIGN TSP TL MODAL ─────────────────────────────────────── */}
+      {showAssignTspTl && assignTspTlTarget && (
+        <Modal title={`Assign TSP TL to ${assignTspTlTarget.brmNumber}`} onClose={() => { setShowAssignTspTl(false); setAssignTspTlTarget(null); }}>
+          <form onSubmit={handleAssignTspTl} className="space-y-5">
+            <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-700/60 mb-2">
+              <p className="text-white text-sm font-medium mb-1">{assignTspTlTarget.title}</p>
+              <p className="text-slate-400 text-xs">{assignTspTlTarget.TeamName} · {assignTspTlTarget.Category}</p>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                Select TSP Team Lead <span className="text-red-400">*</span>
+              </label>
+              <select 
+                required
+                value={selectedTspTl}
+                onChange={e => setSelectedTspTl(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-lg bg-slate-900/60 border border-slate-600/50 text-white focus:outline-none focus:ring-2 focus:ring-brand-500 text-sm">
+                <option value="">Select TSP Team Lead</option>
+                {tspTlList.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.firstName} {t.lastName} ({t.employeeId})
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={() => { setShowAssignTspTl(false); setAssignTspTlTarget(null); }}
+                className="flex-1 py-2.5 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-700 text-sm font-medium transition-colors">
+                Cancel
+              </button>
+              <button type="submit" disabled={submitting || !selectedTspTl}
+                className="flex-1 py-2.5 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-medium transition-colors">
+                {submitting ? 'Assigning...' : 'Confirm Assignment'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+
     </div>
   );
 }
