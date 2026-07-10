@@ -4,6 +4,9 @@ import { BrmStatusBadge, PriorityBadge } from '../../components/BrmStatusBadge.j
 import { createBrm, updateBrm, submitBrm, listBrms, getBrm, assignBrmToTm, assignBrmToTspTl } from '../../api/brm.api.js';
 import BrmDashboardView from '../../components/dashboard/BrmDashboardView.jsx';
 import api from '../../api/axios.js'; 
+import BrmDetailModal from '../../components/BrmDetailModal';
+import { approveArchitecture } from '../../api/brm.api.js';
+
 
 
 // ─── Shared UI atoms ────────────────────────────────────────────────────────
@@ -214,6 +217,22 @@ export default function PlDashboard() {
     }
   };
 
+    const handleApproveArchitecture = async (brm) => {
+    if (!window.confirm(`Are you sure you want to approve the architecture for ${brm.brmNumber}? This will move it to Development phase.`)) return;
+    
+    setSubmitting(true);
+    try {
+      await approveArchitecture(brm.id);
+      showToast('Architecture approved. BRM is now Ready for Development!');
+      fetchBrms();
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to approve architecture', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+
 
 
   const openEdit = (brm) => {
@@ -257,7 +276,7 @@ export default function PlDashboard() {
             onClick={() => setActiveTab('actions')} 
             className={`pb-2 px-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'actions' ? 'border-brand-500 text-brand-400' : 'border-transparent text-slate-400 hover:text-white'}`}
           >
-            Create BRM 
+            BRM Management
           </button>
         </div>
         {/* ─── RENDER DASHBOARD OR ACTION ITEMS ─── */}
@@ -397,6 +416,15 @@ export default function PlDashboard() {
                                 Assign TSP TL
                               </button>
                             )}
+                            {brm.currentStatus === 'ARCHITECTURE_SUBMITTED' && (
+                              <button onClick={() => handleApproveArchitecture(brm)}
+                                className="px-2.5 py-1 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 text-xs border border-orange-500/30 transition-all">
+                                Approve Architecture
+                              </button>
+                            )}
+
+
+                    
 
                         </div>
                       </td>
@@ -571,80 +599,12 @@ export default function PlDashboard() {
 
 
 
-      {/* ─── VIEW BRM DETAIL MODAL ───────────────────────────────────── */}
-      {viewTarget && (
-        <Modal title={viewTarget.loading ? 'Loading...' : `${viewTarget.brmNumber} — Details`} onClose={() => setViewTarget(null)} wide>
-          {viewTarget.loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-brand-500"></div>
-            </div>
-          ) : (
-            <div className="space-y-5">
-              {/* BRM Header */}
-              <div className="flex items-start justify-between">
-                <div>
-                  <h4 className="text-white font-semibold text-lg">{viewTarget.title}</h4>
-                  <p className="text-slate-400 text-sm">{viewTarget.TeamName} · {viewTarget.Category}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <PriorityBadge priority={viewTarget.priority} />
-                  <BrmStatusBadge status={viewTarget.currentStatus} />
-                </div>
-              </div>
-              {viewTarget.description && (
-                <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-4">
-                  <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-2">Description</p>
-                  <p className="text-slate-300 text-sm">{viewTarget.description}</p>
-                </div>
-              )}
-              {/* Approval Cycles */}
-              {viewTarget.approvalCycles?.length > 0 && (
-                <div>
-                  <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-3">Approval Cycles</p>
-                  <div className="space-y-3">
-                    {viewTarget.approvalCycles.map((cycle) => (
-                      <div key={cycle.id} className="bg-slate-900/50 border border-slate-700 rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <p className="text-white text-sm font-medium">Cycle #{cycle.cycleNumber}</p>
-                          <BrmStatusBadge status={cycle.status} />
-                        </div>
-                        <div className="space-y-2">
-                          {cycle.approvals.map((a) => (
-                            <div key={a.id} className="flex items-center justify-between text-xs">
-                              <span className="text-slate-400">{a.approver.firstName} {a.approver.lastName}
-                                <span className="text-slate-600 ml-1">({a.approverRole.replace(/_/g, ' ')})</span>
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <BrmStatusBadge status={a.status} />
-                                {a.comments && <span className="text-slate-500 italic max-w-[200px] truncate">"{a.comments}"</span>}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {/* History */}
-              {viewTarget.history?.length > 0 && (
-                <div>
-                  <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-3">Status History</p>
-                  <div className="space-y-2">
-                    {viewTarget.history.map((h) => (
-                      <div key={h.id} className="flex items-center gap-3 text-xs">
-                        <span className="text-slate-500 shrink-0">{new Date(h.createdAt).toLocaleString()}</span>
-                        <span className="text-slate-400">{h.oldStatus || '—'} → <strong className="text-white">{h.newStatus}</strong></span>
-                        {h.remarks && <span className="text-slate-500 italic">· {h.remarks}</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </Modal>
-      )}
+            {/* ─── VIEW BRM DETAIL MODAL ───────────────────────────────────── */}
+      <BrmDetailModal 
+        target={viewTarget} 
+        onClose={() => setViewTarget(null)} 
+      />
+
 
                   {/* ─── ASSIGN TSP TL MODAL ─────────────────────────────────────── */}
       {showAssignTspTl && assignTspTlTarget && (

@@ -75,6 +75,9 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+//Architecture upload
+app.use("/uploads", express.static("uploads"));
+
 // ─── Routes ─────────────────────────────────────────────────────────────────
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/admin", adminRoutes);

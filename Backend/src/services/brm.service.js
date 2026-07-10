@@ -257,6 +257,10 @@ export const getBrmById = async (brmId) => {
           createdBy: { select: { id: true, firstName: true, lastName: true } },
         }
       },
+      architectureDocs: {
+        orderBy: { version: "desc" },
+        include: { uploadedBy: { select: { firstName: true, lastName: true } } },
+      },
 
 
     },
@@ -271,7 +275,13 @@ export const listBrms = async ({ userId, roles, status, priority, page = 1, limi
   const skip = (page - 1) * limit;
   const where = {};
 
-  if (status)   where.currentStatus = status;
+  if (status) {
+  if (status.includes(',')) {
+    where.currentStatus = { in: status.split(',') };
+  } else {
+    where.currentStatus = status;
+  }
+}
   if (priority) where.priority = priority;
 
   // PLs only see their own BRMs
@@ -494,4 +504,128 @@ export const assignBrmToTspTl = async (brmId, plId, tspTlId) => {
   });
 
   return { message: "BRM assigned successfully to TSP TL" };
+};
+
+
+
+export const submitArchitecture = async (brmId, tspTlId, file) => {
+  const brm = await prisma.brm.findUnique({ where: { id: brmId } });
+  
+  if (!brm) throw new ApiError(404, "BRM not found");
+  if (brm.currentStatus !== "ARCHITECTURE_CREATION") {
+    throw new ApiError(400, "BRM is not in the architecture creation phase");
+  }
+  if (!file) throw new ApiError(400, "Architecture document is required");
+
+  // Calculate new version
+  const existingDocsCount = await prisma.architectureDocument.count({ where: { brmId } });
+  const version = existingDocsCount + 1;
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Save document record
+    await tx.architectureDocument.create({
+      data: {
+        brmId,
+        fileName: file.originalname,
+        fileUrl: `/uploads/architecture/${file.filename}`,
+        version,
+        uploadedById: tspTlId
+      }
+    });
+
+    // 2. Update BRM Status
+    await tx.brm.update({
+      where: { id: brmId },
+      data: { currentStatus: "ARCHITECTURE_SUBMITTED" }
+    });
+
+    // 3. Track history
+    await tx.brmHistory.create({
+      data: {
+        brmId,
+        oldStatus: "ARCHITECTURE_CREATION",
+        newStatus: "ARCHITECTURE_SUBMITTED",
+        remarks: `Architecture document uploaded (v${version})`,
+        changedById: tspTlId
+      }
+    });
+  });
+
+  return { message: "Architecture submitted successfully", version };
+};
+
+export const approveArchitecture = async (brmId, plId) => {
+  const brm = await prisma.brm.findUnique({ where: { id: brmId } });
+  
+  if (!brm) throw new ApiError(404, "BRM not found");
+  if (brm.currentPlId !== plId) throw new ApiError(403, "You are not the PL of this BRM");
+  if (brm.currentStatus !== "ARCHITECTURE_SUBMITTED") {
+    throw new ApiError(400, "BRM must be in ARCHITECTURE_SUBMITTED status to approve architecture");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Update Status
+    await tx.brm.update({
+      where: { id: brmId },
+      data: { currentStatus: "READY_FOR_DEVELOPMENT" }
+    });
+
+    // 2. Track History
+    await tx.brmHistory.create({
+      data: {
+        brmId,
+        oldStatus: "ARCHITECTURE_SUBMITTED",
+        newStatus: "READY_FOR_DEVELOPMENT",
+        remarks: "Architecture approved by Product Lead. Ready for Dev Phase.",
+        changedById: plId
+      }
+    });
+  });
+
+  return { message: "Architecture approved successfully" };
+};
+
+
+export const submitTechnologyRequirements = async (brmId, tspTlId, requirements) => {
+  const brm = await prisma.brm.findUnique({ where: { id: brmId } });
+  
+  if (!brm) throw new ApiError(404, "BRM not found");
+  if (brm.currentStatus !== "READY_FOR_DEVELOPMENT") {
+    throw new ApiError(400, "BRM is not in READY_FOR_DEVELOPMENT status");
+  }
+
+  // Build the payload
+  const techData = requirements.map(req => ({
+    brmId,
+    technologyName: req.technologyName,
+    resourceCount: parseInt(req.resourceCount, 10),
+    allocationType: req.allocationType,
+    submittedById: tspTlId
+  }));
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Insert Requirements
+    await tx.technologyRequirement.createMany({
+      data: techData
+    });
+
+    // 2. Change Status to READY_FOR_TASK_ALLOCATION
+    await tx.brm.update({
+      where: { id: brmId },
+      data: { currentStatus: "READY_FOR_TASK_ALLOCATION" }
+    });
+
+    // 3. Log History
+    await tx.brmHistory.create({
+      data: {
+        brmId,
+        oldStatus: "READY_FOR_DEVELOPMENT",
+        newStatus: "READY_FOR_TASK_ALLOCATION",
+        remarks: `TSP TL submitted ${requirements.length} technology requirement(s)`,
+        changedById: tspTlId
+      }
+    });
+  });
+
+  return { message: "Technology requirements submitted successfully." };
 };

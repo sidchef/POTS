@@ -102,6 +102,12 @@ model User {
   securityScans SecurityScan[]
 
   securityFindingHistories SecurityFindingHistory[]
+
+  architectureDocs ArchitectureDocument[]
+
+  technologyRequirements TechnologyRequirement[]
+
+
 }
 
 model UserRole {
@@ -224,6 +230,11 @@ model Brm {
   tasks Task[]
 
   brmMetrics BrmMetric[]
+
+  architectureDocs ArchitectureDocument[]
+
+  technologyRequirements TechnologyRequirement[]
+
 }
 
 
@@ -246,6 +257,8 @@ enum BrmStatus {
   ARCHITECTURE_SUBMITTED
 
   READY_FOR_DEVELOPMENT
+
+  READY_FOR_TASK_ALLOCATION
 
   CODING_IN_PROGRESS
 
@@ -687,6 +700,21 @@ enum ArchitectureStatus {
   READY_FOR_DEVELOPMENT
 }
 
+model ArchitectureDocument {
+  id            String   @id @default(uuid())
+  brmId         String
+  fileName      String
+  fileUrl       String
+  version       Int      @default(1)
+  
+  uploadedById  String
+  uploadedBy    User     @relation(fields: [uploadedById], references: [id])
+  
+  uploadedAt    DateTime @default(now())
+
+  brm           Brm      @relation(fields: [brmId], references: [id])
+}
+
 
 
 model ArchitectureHistory {
@@ -710,6 +738,21 @@ model ArchitectureHistory {
   changedBy              User@relation(fields:[changedById],references:[id])//NOT ADDED TO TABLE
 }
 
+//Adds technology required for a BRM 
+model TechnologyRequirement {
+  id              String   @id @default(uuid())
+  brmId           String
+  
+  technologyName  String
+  resourceCount   Int
+  allocationType  String   // "FULL_TIME" or "SHARED"
+  
+  submittedById   String
+  submittedBy     User     @relation(fields: [submittedById], references: [id])
+  
+  createdAt       DateTime @default(now())
+  brm             Brm      @relation(fields: [brmId], references: [id])
+}
 
 
 

@@ -3,6 +3,8 @@ import Navbar from '../../components/Navbar.jsx';
 import { BrmStatusBadge, PriorityBadge } from '../../components/BrmStatusBadge.jsx';
 import api from '../../api/axios.js';
 import BrmDashboardView from '../../components/dashboard/BrmDashboardView.jsx';
+import { submitArchitecture } from '../../api/brm.api.js';
+
 
 export default function TspTlDashboard() {
   const [brms, setBrms] = useState([]);
@@ -10,11 +12,15 @@ export default function TspTlDashboard() {
   const [loading, setLoading] = useState(true);
   const [loadingAll, setLoadingAll] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [uploadTarget, setUploadTarget] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
 
   // Fetch only BRMs ready for architecture review
   const fetchAssignedBrms = useCallback(async () => {
     try {
-      const res = await api.get('/brms', { params: { status: 'ARCHITECTURE_CREATION', limit: 100 } });
+      const res = await api.get('/brms', { params: { status: 'ARCHITECTURE_CREATION,ARCHITECTURE_SUBMITTED', limit: 100 } });
       setBrms(res.data.data.brms);
     } catch (err) {
       console.error('Failed to load assigned BRMs', err);
@@ -39,6 +45,28 @@ export default function TspTlDashboard() {
     fetchAssignedBrms();
     fetchAllBrms();
   }, [fetchAssignedBrms, fetchAllBrms]);
+
+    const handleUploadSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedFile) return alert('Please select a file to upload');
+
+    setSubmitting(true);
+    const formData = new FormData();
+    formData.append('document', selectedFile);
+
+    try {
+      await submitArchitecture(uploadTarget.id, formData);
+      alert('Architecture submitted successfully!');
+      setUploadTarget(null);
+      setSelectedFile(null);
+      fetchAssignedBrms(); // Refresh the list
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to upload architecture');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-dark-900">
@@ -135,8 +163,14 @@ export default function TspTlDashboard() {
                           {new Date(brm.updatedAt).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4">
-                          <button className="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium transition-colors shadow-lg shadow-purple-500/20">
-                            Submit Architecture
+                          <button 
+                            onClick={() => setUploadTarget(brm)}
+                            className={`px-4 py-1.5 rounded-lg text-white text-xs font-medium transition-all shadow-lg ${
+                            brm.currentStatus === 'ARCHITECTURE_CREATION' 
+                            ? 'bg-purple-600 hover:bg-purple-500 shadow-purple-500/20' 
+                            : 'bg-slate-700 hover:bg-slate-600 shadow-slate-900/20 border border-slate-600'
+                            }`}>
+                            {brm.currentStatus === 'ARCHITECTURE_CREATION' ? 'Submit Architecture' : 'Upload New Version'}
                           </button>
                         </td>
                       </tr>
@@ -148,6 +182,51 @@ export default function TspTlDashboard() {
           </div>
         )}
       </main>
+            {/* ─── UPLOAD MODAL ─────────────────────────────────────── */}
+      {uploadTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(2,6,23,0.85)', backdropFilter: 'blur(4px)' }}>
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700">
+              <h3 className="text-white font-semibold text-lg">Submit Architecture for {uploadTarget.brmNumber}</h3>
+              <button onClick={() => setUploadTarget(null)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <div className="p-6">
+              <form onSubmit={handleUploadSubmit} className="space-y-5">
+                <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-700/60">
+                  <p className="text-white text-sm font-medium mb-1">{uploadTarget.title}</p>
+                  <p className="text-slate-400 text-xs">A new version number will be assigned automatically.</p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                    Upload Document (PDF or Image) <span className="text-red-400">*</span>
+                  </label>
+                  <input 
+                    type="file" 
+                    accept=".pdf,image/*"
+                    required
+                    onChange={(e) => setSelectedFile(e.target.files[0])}
+                    className="w-full text-sm text-slate-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-700 file:cursor-pointer file:transition-colors bg-slate-900/60 border border-slate-600/50 rounded-lg"
+                  />
+                  {selectedFile && <p className="mt-2 text-xs text-brand-400">Selected: {selectedFile.name}</p>}
+                </div>
+                
+                <div className="flex gap-3 pt-2">
+                  <button type="button" onClick={() => { setUploadTarget(null); setSelectedFile(null); }}
+                    className="flex-1 py-2.5 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-700 text-sm font-medium transition-colors">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={submitting || !selectedFile}
+                    className="flex-1 py-2.5 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-medium transition-colors">
+                    {submitting ? 'Uploading...' : 'Submit Architecture'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

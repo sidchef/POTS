@@ -127,3 +127,35 @@ export const assignBrmToTspTl = async (req, res, next) => {
     res.status(200).json(new ApiResponse(200, result, "TSP TL assigned successfully"));
   } catch (err) { next(err); }
 };
+
+
+
+ export const submitArchitecture = async (req, res, next) => {
+  try {
+    const result = await brmService.submitArchitecture(req.params.id, req.user.id, req.file);
+    res.status(200).json(new ApiResponse(200, result, "Architecture submitted successfully"));
+  } catch (err) { next(err); }
+};
+
+
+export const approveArchitecture = async (req, res, next) => {
+  try {
+    const result = await brmService.approveArchitecture(req.params.id, req.user.id);
+    res.status(200).json(new ApiResponse(200, result, "Architecture approved"));
+  } catch (err) { next(err); }
+};
+
+
+export const submitTechnologyRequirements = async (req, res, next) => {
+  try {
+    const { requirements } = req.body;
+    if (!requirements || !Array.isArray(requirements) || requirements.length === 0) {
+      return res.status(400).json(new ApiResponse(400, null, "Requirements array is mandatory"));
+    }
+    
+    const result = await brmService.submitTechnologyRequirements(req.params.id, req.user.id, requirements);
+    res.status(200).json(new ApiResponse(200, result, "Technology Requirements submitted"));
+  } catch (err) { next(err); }
+};
+
+

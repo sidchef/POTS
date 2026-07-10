@@ -14,3 +14,11 @@ export const assignBrmToTm = (id, data) => api.post(`/brms/${id}/assign-tm`, dat
 export const submitUserStories = (id) => api.post(`/brms/${id}/submit-stories`);
 export const assignBrmToTspTl = (id, data) => api.post(`/brms/${id}/assign-tsp-tl`, data);
 
+// Note: We don't set Content-Type so Axios sets it to multipart/form-data automatically
+export const submitArchitecture = (id, formData) => 
+  api.post(`/brms/${id}/submit-architecture`, formData, {
+    headers: { 'Content-Type': undefined }
+  });
+
+export const approveArchitecture = (id) => api.post(`/brms/${id}/approve-architecture`);
+

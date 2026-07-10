@@ -3,9 +3,11 @@ import { authenticate, authorize } from "../middleware/auth.middleware.js";
 import {
   createBrm, updateBrm, submitBrm, getBrmById,
   listBrms, approveBrm, rejectBrm, getMyPendingApprovals,
-  assignBrmToTm, submitUserStories, assignBrmToTspTl // ⬅️ Added new functions here
+  assignBrmToTm, submitUserStories, assignBrmToTspTl, submitArchitecture, approveArchitecture // ⬅️ Added new functions here
 } from "../controllers/brm.controller.js";
 import prisma from "../config/prisma.js";
+import { uploadArchitecture } from "../middleware/upload.middleware.js";
+
 
 
 const router = Router();
@@ -43,6 +45,10 @@ router.post("/:id/reject", authorize("COMMITTEE_REVIEW"), rejectBrm);
 router.post("/:id/assign-tm", authorize("CREATE_BRM"), assignBrmToTm); 
 router.post("/:id/submit-stories", authorize("TASK_BOARD"), submitUserStories); 
 router.post("/:id/assign-tsp-tl", authorize("CREATE_BRM"), assignBrmToTspTl);
+
+router.post("/:id/submit-architecture", authorize("SUBMIT_ARCHITECTURE"), uploadArchitecture.single('document'), submitArchitecture);
+router.post("/:id/approve-architecture", authorize("CREATE_BRM"), approveArchitecture);
+
 
 
 
