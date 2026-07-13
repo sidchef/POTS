@@ -22,3 +22,8 @@ export const submitArchitecture = (id, formData) =>
 
 export const approveArchitecture = (id) => api.post(`/brms/${id}/approve-architecture`);
 
+export const addTechnologyRequirement = (id, requirement) => api.post(`/brms/${id}/technology-requirements/add`, { requirement });
+export const finalizeTechnologyRequirements = (id) => api.post(`/brms/${id}/technology-requirements/submit`);
+
+
+

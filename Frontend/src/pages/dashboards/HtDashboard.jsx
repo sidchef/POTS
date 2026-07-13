@@ -47,18 +47,36 @@ export default function HtDashboard() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const fetchPending = useCallback(async () => {
-    setLoading(true);
+  const fetchPending = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     try {
       const res = await getMyPendingApprovals();
       setPendingApprovals(res.data.data);
     } catch {
       showToast('Failed to load pending approvals', 'error');
-    } finally { setLoading(false); }
+    } finally { if (showSpinner) setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchPending(); }, [fetchPending]);
-   useEffect(() => { fetchPending(); fetchAllBrms();}, [fetchPending, fetchAllBrms]);
+  useEffect(() => { 
+    fetchPending(true); 
+    fetchAllBrms();
+    
+    const interval = setInterval(() => {
+      fetchPending(false);
+      fetchAllBrms();
+    }, 10000);
+    
+    const onFocus = () => {
+      fetchPending(false);
+      fetchAllBrms();
+    };
+    window.addEventListener('focus', onFocus);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [fetchPending, fetchAllBrms]);
 
   const handleVote = async () => {
     if (voteModal.decision === 'REJECTED' && !comments.trim()) {

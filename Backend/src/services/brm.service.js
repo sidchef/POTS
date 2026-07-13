@@ -262,6 +262,12 @@ export const getBrmById = async (brmId) => {
         include: { uploadedBy: { select: { firstName: true, lastName: true } } },
       },
 
+      technologyRequirements: {
+        orderBy: { createdAt: "asc" },
+        include: { submittedBy: { select: { firstName: true, lastName: true } } }
+      },
+
+
 
     },
   });
@@ -512,7 +518,7 @@ export const submitArchitecture = async (brmId, tspTlId, file) => {
   const brm = await prisma.brm.findUnique({ where: { id: brmId } });
   
   if (!brm) throw new ApiError(404, "BRM not found");
-  if (brm.currentStatus !== "ARCHITECTURE_CREATION") {
+  if (brm.currentStatus !== "ARCHITECTURE_CREATION" && brm.currentStatus !== "ARCHITECTURE_SUBMITTED") {
     throw new ApiError(400, "BRM is not in the architecture creation phase");
   }
   if (!file) throw new ApiError(400, "Architecture document is required");
@@ -555,7 +561,10 @@ export const submitArchitecture = async (brmId, tspTlId, file) => {
 };
 
 export const approveArchitecture = async (brmId, plId) => {
-  const brm = await prisma.brm.findUnique({ where: { id: brmId } });
+  const brm = await prisma.brm.findUnique({ 
+    where: { id: brmId },
+    include: { brmAssignments: true } 
+  });
   
   if (!brm) throw new ApiError(404, "BRM not found");
   if (brm.currentPlId !== plId) throw new ApiError(403, "You are not the PL of this BRM");
@@ -582,50 +591,71 @@ export const approveArchitecture = async (brmId, plId) => {
     });
   });
 
+  // 3. Notify the TSP TL
+  const tspTlAssignment = brm.brmAssignments.find(a => a.assignmentType === "TSP_TL" && a.isCurrent);
+  if (tspTlAssignment) {
+    await createNotification({
+      userId: tspTlAssignment.assignedToId,
+      title: "Architecture Approved",
+      message: `The PL has approved the architecture for BRM ${brm.brmNumber}. You can now begin Resource Allocation.`
+    });
+  }
+
   return { message: "Architecture approved successfully" };
 };
 
 
-export const submitTechnologyRequirements = async (brmId, tspTlId, requirements) => {
+
+export const addTechnologyRequirement = async (brmId, tspTlId, requirement) => {
   const brm = await prisma.brm.findUnique({ where: { id: brmId } });
-  
   if (!brm) throw new ApiError(404, "BRM not found");
   if (brm.currentStatus !== "READY_FOR_DEVELOPMENT") {
     throw new ApiError(400, "BRM is not in READY_FOR_DEVELOPMENT status");
   }
 
-  // Build the payload
-  const techData = requirements.map(req => ({
-    brmId,
-    technologyName: req.technologyName,
-    resourceCount: parseInt(req.resourceCount, 10),
-    allocationType: req.allocationType,
-    submittedById: tspTlId
-  }));
+  const newReq = await prisma.technologyRequirement.create({
+    data: {
+      brmId,
+      technologyName: requirement.technologyName,
+      resourceCount: parseInt(requirement.resourceCount, 10),
+      allocationType: requirement.allocationType,
+      submittedById: tspTlId
+    }
+  });
+  return newReq;
+};
+
+export const finalizeTechnologyRequirements = async (brmId, tspTlId) => {
+  const brm = await prisma.brm.findUnique({ 
+    where: { id: brmId },
+    include: { technologyRequirements: true }
+  });
+  
+  if (!brm) throw new ApiError(404, "BRM not found");
+  if (brm.currentStatus !== "READY_FOR_DEVELOPMENT") {
+    throw new ApiError(400, "BRM is not in READY_FOR_DEVELOPMENT status");
+  }
+  if (brm.technologyRequirements.length === 0) {
+    throw new ApiError(400, "Cannot submit. Please add at least one technology requirement first.");
+  }
 
   await prisma.$transaction(async (tx) => {
-    // 1. Insert Requirements
-    await tx.technologyRequirement.createMany({
-      data: techData
-    });
-
-    // 2. Change Status to READY_FOR_TASK_ALLOCATION
     await tx.brm.update({
       where: { id: brmId },
       data: { currentStatus: "READY_FOR_TASK_ALLOCATION" }
     });
 
-    // 3. Log History
     await tx.brmHistory.create({
       data: {
         brmId,
         oldStatus: "READY_FOR_DEVELOPMENT",
         newStatus: "READY_FOR_TASK_ALLOCATION",
-        remarks: `TSP TL submitted ${requirements.length} technology requirement(s)`,
+        remarks: `TSP TL finalized ${brm.technologyRequirements.length} technology requirement(s)`,
         changedById: tspTlId
       }
     });
   });
 
-  return { message: "Technology requirements submitted successfully." };
+  return { message: "Technology requirements finalized successfully." };
 };
+

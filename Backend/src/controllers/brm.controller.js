@@ -146,16 +146,23 @@ export const approveArchitecture = async (req, res, next) => {
 };
 
 
-export const submitTechnologyRequirements = async (req, res, next) => {
+export const addTechnologyRequirement = async (req, res, next) => {
   try {
-    const { requirements } = req.body;
-    if (!requirements || !Array.isArray(requirements) || requirements.length === 0) {
-      return res.status(400).json(new ApiResponse(400, null, "Requirements array is mandatory"));
+    const { requirement } = req.body;
+    if (!requirement || !requirement.technologyName) {
+      return res.status(400).json(new ApiResponse(400, null, "Technology name is required"));
     }
-    
-    const result = await brmService.submitTechnologyRequirements(req.params.id, req.user.id, requirements);
-    res.status(200).json(new ApiResponse(200, result, "Technology Requirements submitted"));
+    const result = await brmService.addTechnologyRequirement(req.params.id, req.user.id, requirement);
+    res.status(201).json(new ApiResponse(201, result, "Technology Requirement added"));
   } catch (err) { next(err); }
 };
+
+export const finalizeTechnologyRequirements = async (req, res, next) => {
+  try {
+    const result = await brmService.finalizeTechnologyRequirements(req.params.id, req.user.id);
+    res.status(200).json(new ApiResponse(200, result, "Technology Requirements finalized"));
+  } catch (err) { next(err); }
+};
+
 
 

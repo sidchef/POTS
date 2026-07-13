@@ -80,8 +80,8 @@ export default function AdminDashboard() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const fetchUsers = useCallback(async () => {
-    setLoading(true);
+  const fetchUsers = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     try {
       const params = { page, limit: 10 };
       if (search) params.search = search;
@@ -92,12 +92,19 @@ export default function AdminDashboard() {
     } catch {
       showToast('Failed to fetch users', 'error');
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   }, [page, search, roleFilter]);
 
   useEffect(() => {
-    fetchUsers();
+    fetchUsers(true);
+    const interval = setInterval(() => fetchUsers(false), 10000);
+    const onFocus = () => fetchUsers(false);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [fetchUsers]);
 
   useEffect(() => {

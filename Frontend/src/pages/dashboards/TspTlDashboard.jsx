@@ -3,7 +3,9 @@ import Navbar from '../../components/Navbar.jsx';
 import { BrmStatusBadge, PriorityBadge } from '../../components/BrmStatusBadge.jsx';
 import api from '../../api/axios.js';
 import BrmDashboardView from '../../components/dashboard/BrmDashboardView.jsx';
-import { submitArchitecture } from '../../api/brm.api.js';
+import { submitArchitecture, addTechnologyRequirement, finalizeTechnologyRequirements, getBrm } from '../../api/brm.api.js';
+import Modal from '../../components/Modal.jsx';
+
 
 
 export default function TspTlDashboard() {
@@ -15,36 +17,68 @@ export default function TspTlDashboard() {
   const [uploadTarget, setUploadTarget] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [techBrms, setTechBrms] = useState([]);
+  const [resourceTarget, setResourceTarget] = useState(null);
+  const [requirement, setRequirement] = useState({ technologyName: '', resourceCount: 1, allocationType: 'FULL_TIME' });
 
+  const fetchTechBrms = useCallback(async () => {
+    try {
+      const res = await api.get('/brms', { params: { status: 'READY_FOR_DEVELOPMENT', limit: 100 } });
+      setTechBrms(res.data.data.brms);
+    } catch (err) {
+      console.error('Failed to load tech BRMs', err);
+    }
+  }, []);
 
   // Fetch only BRMs ready for architecture review
-  const fetchAssignedBrms = useCallback(async () => {
+  const fetchAssignedBrms = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     try {
       const res = await api.get('/brms', { params: { status: 'ARCHITECTURE_CREATION,ARCHITECTURE_SUBMITTED', limit: 100 } });
       setBrms(res.data.data.brms);
     } catch (err) {
       console.error('Failed to load assigned BRMs', err);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   }, []);
 
   // Fetch all assigned BRMs for the overview
-  const fetchAllBrms = useCallback(async () => {
+  const fetchAllBrms = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoadingAll(true);
     try {
       const res = await api.get('/brms', { params: { limit: 100 } });
       setAllBrms(res.data.data.brms);
     } catch (err) {
       console.error('Failed to load all BRMs', err);
     } finally {
-      setLoadingAll(false);
+      if (showSpinner) setLoadingAll(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchAssignedBrms();
-    fetchAllBrms();
-  }, [fetchAssignedBrms, fetchAllBrms]);
+    fetchAssignedBrms(true);
+    fetchAllBrms(true);
+    fetchTechBrms();
+    
+    const interval = setInterval(() => {
+      fetchAssignedBrms(false);
+      fetchAllBrms(false);
+      fetchTechBrms();
+    }, 10000);
+    
+    const onFocus = () => {
+      fetchAssignedBrms(false);
+      fetchAllBrms(false);
+      fetchTechBrms();
+    };
+    window.addEventListener('focus', onFocus);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [fetchAssignedBrms, fetchAllBrms, fetchTechBrms]);
 
     const handleUploadSubmit = async (e) => {
     e.preventDefault();
@@ -66,6 +100,53 @@ export default function TspTlDashboard() {
       setSubmitting(false);
     }
   };
+
+
+  // Open the modal and fetch the latest details (including saved requirements)
+  const handleOpenResourceModal = async (brm) => {
+    try {
+      const res = await getBrm(brm.id);
+      setResourceTarget(res.data.data);
+      setRequirement({ technologyName: '', resourceCount: 1, allocationType: 'FULL_TIME' });
+    } catch(err) {
+      alert("Failed to load BRM details");
+    }
+  };
+
+  // Add a single requirement via the modal
+  const handleAddRequirement = async (e) => {
+    e.preventDefault();
+    if (!requirement.technologyName.trim()) return alert("Please fill in the technology name.");
+    
+    setSubmitting(true);
+    try {
+      await addTechnologyRequirement(resourceTarget.id, requirement);
+      // Re-fetch to update the modal with the new requirement instantly
+      const res = await getBrm(resourceTarget.id);
+      setResourceTarget(res.data.data);
+      // Reset form
+      setRequirement({ technologyName: '', resourceCount: 1, allocationType: 'FULL_TIME' });
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to add requirement');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Finalize the whole phase via the Table Action button
+  const handleFinalizeRequirements = async (brm) => {
+    if (!window.confirm(`Are you sure you want to finalize requirements for ${brm.brmNumber}?`)) return;
+    
+    try {
+      await finalizeTechnologyRequirements(brm.id);
+      alert('Requirements finalized successfully!');
+      fetchTechBrms(); // Refresh the table
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to finalize requirements. Ensure you have added at least one.');
+    }
+  };
+
+
 
 
   return (
@@ -107,10 +188,30 @@ export default function TspTlDashboard() {
               <span className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-500 rounded-t-full shadow-[0_-2px_8px_rgba(168,85,247,0.5)]"></span>
             )}
           </button>
+
+          <button
+            onClick={() => setActiveTab('resources')}
+            className={`pb-4 text-sm font-medium transition-colors relative flex items-center gap-2 ${
+              activeTab === 'resources' ? 'text-brand-400' : 'text-slate-400 hover:text-slate-300'
+            }`}
+          >
+            Resource Allocation
+            {techBrms.length > 0 && (
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                activeTab === 'resources' ? 'bg-orange-500/20 text-orange-400' : 'bg-slate-700 text-slate-300'
+              }`}>
+                {techBrms.length}
+              </span>
+            )}
+            {activeTab === 'resources' && (
+              <span className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-500 rounded-t-full shadow-[0_-2px_8px_rgba(249,115,22,0.5)]"></span>
+            )}
+          </button>
+
         </div>
 
-        {/* Content Area */}
-        {activeTab === 'overview' ? (
+                {/* Content Area */}
+        {activeTab === 'overview' && (
           loadingAll ? (
             <div className="flex justify-center py-20">
               <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-brand-500"></div>
@@ -118,7 +219,10 @@ export default function TspTlDashboard() {
           ) : (
             <BrmDashboardView brms={allBrms} />
           )
-        ) : (
+        )}
+        
+        {activeTab === 'assignments' && (
+
           <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-xl">
             {loading ? (
               <div className="flex items-center justify-center py-20">
@@ -181,6 +285,141 @@ export default function TspTlDashboard() {
             )}
           </div>
         )}
+
+
+                {/* --- RESOURCE ALLOCATION TAB --- */}
+        {activeTab === 'resources' && (
+          <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-xl">
+            {techBrms.length === 0 ? (
+              <div className="text-center py-20">
+                <p className="text-slate-400">No BRMs waiting for resource allocation.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-700 bg-slate-900/40">
+                      {['BRM Number', 'Title', 'Team', 'Priority', 'Actions'].map(h => (
+                        <th key={h} className="text-left text-slate-400 font-medium px-6 py-4 text-xs uppercase tracking-wide whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/50">
+                    {techBrms.map((brm) => (
+                      <tr key={brm.id} className="hover:bg-slate-700/20">
+                        <td className="px-6 py-4"><span className="text-purple-400 font-mono text-xs font-semibold">{brm.brmNumber}</span></td>
+                        <td className="px-6 py-4 text-white font-medium">{brm.title}</td>
+                        <td className="px-6 py-4 text-slate-300">{brm.TeamName}</td>
+                        <td className="px-6 py-4"><PriorityBadge priority={brm.priority} /></td>
+                        <td className="px-6 py-4 flex items-center gap-2">
+                          <button onClick={() => handleOpenResourceModal(brm)}
+                            className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white text-xs font-medium transition-colors">
+                            Add Requirements
+                          </button>
+                          <button onClick={() => handleFinalizeRequirements(brm)}
+                            className="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-medium shadow-lg shadow-orange-500/20 transition-colors">
+                            Submit All
+                          </button>
+                        </td>
+
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+                {/* --- ADD REQUIREMENTS MODAL --- */}
+        {resourceTarget && (
+          <Modal title={`Resource Allocation: ${resourceTarget.brmNumber}`} onClose={() => setResourceTarget(null)} wide>
+            <div className="space-y-6">
+              {/* Basic Details */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-slate-900 rounded-xl border border-slate-700">
+                <div>
+                  <p className="text-slate-400 text-xs font-medium mb-1">Title</p>
+                  <p className="text-white text-sm font-semibold truncate" title={resourceTarget.title}>{resourceTarget.title}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 text-xs font-medium mb-1">Team</p>
+                  <p className="text-white text-sm">{resourceTarget.TeamName}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 text-xs font-medium mb-1">Category</p>
+                  <p className="text-white text-sm">{resourceTarget.Category}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 text-xs font-medium mb-1">Priority</p>
+                  <PriorityBadge priority={resourceTarget.priority} />
+                </div>
+              </div>
+
+              {/* Already Added Requirements */}
+              <div>
+                <h4 className="text-slate-300 text-sm font-semibold mb-3 border-b border-slate-700 pb-2">Added Requirements</h4>
+                {(!resourceTarget.technologyRequirements || resourceTarget.technologyRequirements.length === 0) ? (
+                  <p className="text-slate-500 text-sm italic py-2">No requirements added yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {resourceTarget.technologyRequirements.map((req) => (
+                      <div key={req.id} className="flex justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+                        <span className="text-white text-sm">{req.technologyName}</span>
+                        <div className="flex gap-3 text-xs">
+                          <span className="text-slate-300 bg-slate-800 px-2 py-1 rounded">Count: {req.resourceCount}</span>
+                          <span className="text-slate-300 bg-slate-800 px-2 py-1 rounded">{req.allocationType.replace('_', ' ')}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Add New Requirement Form */}
+              <form onSubmit={handleAddRequirement} className="pt-4 border-t border-slate-700">
+                <h4 className="text-brand-400 text-sm font-semibold mb-3">Add New Requirement</h4>
+                <div className="flex items-end gap-4">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Technology Name</label>
+                    <input type="text" required placeholder="e.g. React, Node.js"
+                      value={requirement.technologyName}
+                      onChange={(e) => setRequirement({...requirement, technologyName: e.target.value})}
+                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none"
+                    />
+                  </div>
+                  <div className="w-24">
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Count</label>
+                    <input type="number" required min="1"
+                      value={requirement.resourceCount}
+                      onChange={(e) => setRequirement({...requirement, resourceCount: e.target.value})}
+                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none"
+                    />
+                  </div>
+                  <div className="w-36">
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Type</label>
+                    <select
+                      value={requirement.allocationType}
+                      onChange={(e) => setRequirement({...requirement, allocationType: e.target.value})}
+                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none"
+                    >
+                      <option value="FULL_TIME">Full Time</option>
+                      <option value="SHARED">Shared</option>
+                    </select>
+                  </div>
+                  <button type="submit" disabled={submitting}
+                    className="px-6 py-2 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white text-sm font-medium h-[38px]">
+                    {submitting ? '...' : 'Add'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </Modal>
+        )}
+
+
+
+
+
       </main>
             {/* ─── UPLOAD MODAL ─────────────────────────────────────── */}
       {uploadTarget && (

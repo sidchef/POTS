@@ -61,16 +61,12 @@ export default function TmDashboard() {
   };
 
   // Fetch BRMs assigned to me in USER_STORY_CREATION status
-  const fetchMyBrms = useCallback(async () => {
-    setLoading(true);
+  const fetchMyBrms = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     try {
       const res = await api.get('/brms', { params: { status: 'USER_STORY_CREATION', limit: 50 } });
-      // Filter only BRMs that are assigned to me as a TM
-      const myBrms = res.data.data.brms.filter(b =>
-        b.currentStatus === 'USER_STORY_CREATION'
-      );
+      const myBrms = res.data.data.brms.filter(b => b.currentStatus === 'USER_STORY_CREATION');
       setBrms(myBrms);
-      // Fetch story counts for each BRM in parallel
       if (myBrms.length > 0) {
         const countResults = await Promise.all(
           myBrms.map(b => getUserStoriesByBrm(b.id).then(r => ({ brmId: b.id, count: r.data.data.length })).catch(() => ({ brmId: b.id, count: 0 })))
@@ -82,27 +78,40 @@ export default function TmDashboard() {
     } catch {
       showToast('Failed to load assigned BRMs', 'error');
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   }, []);
 
-  
-
-    const fetchAllBrms = useCallback(async () => {
-    setLoadingAll(true);
+  const fetchAllBrms = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoadingAll(true);
     try {
       const res = await listBrms({ limit: 100 });
       setAllBrms(res.data.data.brms);
     } catch {
-      // silently fail — user may not have access to all BRMs
     } finally {
-      setLoadingAll(false);
+      if (showSpinner) setLoadingAll(false);
     }
   }, []);
 
-    useEffect(() => { 
-    fetchMyBrms(); 
-    fetchAllBrms();
+  useEffect(() => { 
+    fetchMyBrms(true); 
+    fetchAllBrms(true);
+    
+    const interval = setInterval(() => {
+      fetchMyBrms(false);
+      fetchAllBrms(false);
+    }, 10000);
+    
+    const onFocus = () => {
+      fetchMyBrms(false);
+      fetchAllBrms(false);
+    };
+    window.addEventListener('focus', onFocus);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [fetchMyBrms, fetchAllBrms]);
 
 
@@ -136,6 +145,8 @@ export default function TmDashboard() {
       setNewStory({ title: '', description: '', priority: 'Medium' });
       const res = await getUserStoriesByBrm(storyTarget.id);
       setStories(res.data.data);
+      // Update story counts to reflect instantly
+      setStoryCounts(prev => ({ ...prev, [storyTarget.id]: res.data.data.length }));
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to add story', 'error');
     } finally { setAddingStory(false); }
@@ -146,7 +157,12 @@ export default function TmDashboard() {
     try {
       await deleteUserStory(storyId);
       showToast('Story removed');
-      setStories(prev => prev.filter(s => s.id !== storyId));
+      setStories(prev => {
+        const updated = prev.filter(s => s.id !== storyId);
+        // Update story counts instantly
+        setStoryCounts(counts => ({ ...counts, [storyTarget.id]: updated.length }));
+        return updated;
+      });
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to delete story', 'error');
     }
@@ -160,7 +176,8 @@ export default function TmDashboard() {
       await submitUserStories(storyTarget.id);
       showToast('User stories submitted! PL has been notified.');
       setStoryTarget(null);
-      fetchMyBrms();
+      fetchMyBrms(); // Removes it from Assignments tab
+      fetchAllBrms(); // Updates the Overview tab instantly
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to submit stories', 'error');
     } finally { setSubmitting(false); }
@@ -171,7 +188,8 @@ export default function TmDashboard() {
     try {
       await submitUserStories(brm.id);
       showToast('User stories submitted! PL has been notified.');
-      fetchMyBrms();
+      fetchMyBrms(); // Removes it from Assignments tab
+      fetchAllBrms(); // Updates the Overview tab instantly
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to submit stories', 'error');
     } finally { setSubmitting(false); }

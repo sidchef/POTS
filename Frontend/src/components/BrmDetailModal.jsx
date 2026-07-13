@@ -127,7 +127,44 @@ export default function BrmDetailModal({ target, onClose }) {
             </div>
           )}
 
-          {/* 5. Status History */}
+          {/*5. Technology & Resource Requirements */}
+          {target.technologyRequirements?.length > 0 && (
+            <div>
+              <h4 className="text-slate-300 text-sm font-semibold mb-3">Technology & Resources ({target.technologyRequirements.length})</h4>
+              <div className="space-y-2">
+                {target.technologyRequirements.map((req) => (
+                  <div key={req.id} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center shrink-0 border border-orange-500/20">
+                        <svg className="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-white text-sm font-medium">{req.technologyName}</p>
+                        <p className="text-slate-500 text-xs mt-0.5">Submitted by {req.submittedBy?.firstName} {req.submittedBy?.lastName}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 text-xs">
+                      <span className="px-2.5 py-1 rounded-md bg-slate-800 border border-slate-700 text-slate-300 shadow-sm">
+                        {req.resourceCount} {req.resourceCount === 1 ? 'Resource' : 'Resources'}
+                      </span>
+                      <span className={`px-2.5 py-1 rounded-md border font-medium shadow-sm ${
+                        req.allocationType === 'FULL_TIME' 
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                          : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                      }`}>
+                        {req.allocationType.replace('_', ' ')}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+
+          {/* 6. Status History */}
           {target.history?.length > 0 && (
             <div>
               <h4 className="text-slate-300 text-sm font-semibold mb-3">Status History</h4>

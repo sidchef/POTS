@@ -90,8 +90,8 @@ export default function PlDashboard() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const fetchBrms = useCallback(async () => {
-    setLoading(true);
+  const fetchBrms = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     try {
       const res = await listBrms({ page, limit: 10, status: statusFilter || undefined });
       setBrms(res.data.data.brms);
@@ -99,11 +99,26 @@ export default function PlDashboard() {
     } catch {
       showToast('Failed to load BRMs', 'error');
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   }, [page, statusFilter]);
 
-  useEffect(() => { fetchBrms(); }, [fetchBrms]);
+  useEffect(() => { 
+    // Initial fetch with spinner
+    fetchBrms(true); 
+    
+    // Background auto-refresh every 10 seconds (no spinner)
+    const interval = setInterval(() => fetchBrms(false), 10000);
+    
+    // Instantly refresh when the user switches back to this browser tab (no spinner)
+    const onFocus = () => fetchBrms(false);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [fetchBrms]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -320,9 +335,16 @@ export default function PlDashboard() {
           <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
             className="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
             <option value="">All Statuses</option>
-            {['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'].map(s => (
+            {[
+              'DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED',
+              'USER_STORY_CREATION', 'USER_STORIES_CREATED',
+              'ARCHITECTURE_CREATION', 'ARCHITECTURE_SUBMITTED',
+              'READY_FOR_DEVELOPMENT', 'READY_FOR_TASK_ALLOCATION',
+              'CODING_IN_PROGRESS', 'READY_FOR_QA', 'QA', 'SECURITY', 'COMPLETED'
+            ].map(s => (
               <option key={s} value={s}>{s}</option>
             ))}
+
           </select>
           <span className="text-slate-500 text-sm">{pagination.total || 0} BRMs</span>
         </div>
