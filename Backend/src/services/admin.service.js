@@ -105,7 +105,7 @@ export const createUser = async ({ employeeId, firstName, lastName, email, roleN
 
 
 
-  // Assign roles
+    // Assign roles
   if (roleNames && roleNames.length > 0) {
     for (const roleName of roleNames) {
       const role = await prisma.role.findUnique({ where: { name: roleName } });
@@ -113,6 +113,14 @@ export const createUser = async ({ employeeId, firstName, lastName, email, roleN
       await prisma.userRole.create({ data: { userId: user.id, roleId: role.id } });
     }
   }
+
+  // Auto-create TspMemberProfile if user is a TSP_TM
+  if (roleNames && roleNames.includes('TSP_TEAM_MEMBER')) {
+    await prisma.tspMemberProfile.create({
+      data: { userId: user.id, skills: [] }
+    });
+  }
+
 
   await logAction({
     userId: adminId,

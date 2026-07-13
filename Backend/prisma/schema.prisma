@@ -107,6 +107,11 @@ model User {
 
   technologyRequirements TechnologyRequirement[]
 
+  tspMemberProfile TspMemberProfile?
+
+  taskAllocationsAssignedBy TaskAllocation[]
+
+
 
 }
 
@@ -234,6 +239,9 @@ model Brm {
   architectureDocs ArchitectureDocument[]
 
   technologyRequirements TechnologyRequirement[]
+
+  taskAllocations TaskAllocation[]
+
 
 }
 
@@ -755,6 +763,42 @@ model TechnologyRequirement {
 }
 
 
+
+model TspMemberProfile {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mobileNumber String?
+  skills       String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  taskAllocations TaskAllocation[]
+}
+
+model TaskAllocation {
+  id               String   @id @default(uuid())
+  brmId            String
+  tspMemberId      String
+  skill            String
+  taskTitle        String
+  taskDescription  String?
+  startDate        DateTime
+  endDate          DateTime
+  status           TaskAllocationStatus @default(ACTIVE)
+  assignedById     String
+
+  brm              Brm                @relation(fields: [brmId], references: [id])
+  tspMember        TspMemberProfile   @relation(fields: [tspMemberId], references: [id])
+  assignedBy       User               @relation(fields: [assignedById], references: [id])
+
+  createdAt        DateTime @default(now())
+}
+
+enum TaskAllocationStatus {
+  ACTIVE
+  COMPLETED
+}
 
 
 

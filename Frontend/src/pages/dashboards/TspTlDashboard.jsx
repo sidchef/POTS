@@ -3,8 +3,11 @@ import Navbar from '../../components/Navbar.jsx';
 import { BrmStatusBadge, PriorityBadge } from '../../components/BrmStatusBadge.jsx';
 import api from '../../api/axios.js';
 import BrmDashboardView from '../../components/dashboard/BrmDashboardView.jsx';
-import { submitArchitecture, addTechnologyRequirement, finalizeTechnologyRequirements, getBrm } from '../../api/brm.api.js';
+import { submitArchitecture, addTechnologyRequirement, finalizeTechnologyRequirements, getBrm, allocateTask, getBrmAllocations, completeAllocation } from '../../api/brm.api.js';
+import { getTspMembersBySkill } from '../../api/tspProfile.api.js';
 import Modal from '../../components/Modal.jsx';
+import { TECH_SKILLS } from '../../constants/skills.js';
+
 
 
 
@@ -20,6 +23,24 @@ export default function TspTlDashboard() {
   const [techBrms, setTechBrms] = useState([]);
   const [resourceTarget, setResourceTarget] = useState(null);
   const [requirement, setRequirement] = useState({ technologyName: '', resourceCount: 1, allocationType: 'FULL_TIME' });
+    // Task Allocation state
+  const [allocBrms, setAllocBrms] = useState([]);
+  const [allocTarget, setAllocTarget] = useState(null);      // BRM whose tasks we're allocating
+  const [allocations, setAllocations] = useState([]);        // existing allocations for this BRM
+  const [selectedSkill, setSelectedSkill] = useState('');    // skill chosen from dropdown
+  const [matchedMembers, setMatchedMembers] = useState([]);  // TMs returned by API
+  const [searchingMembers, setSearchingMembers] = useState(false);
+  const [allocForm, setAllocForm] = useState({
+    tspMemberId: '',
+    skill: '',
+    taskTitle: '',
+    taskDescription: '',
+    startDate: '',
+    endDate: ''
+  });
+  const [allocSubmitting, setAllocSubmitting] = useState(false);
+  const [allocToast, setAllocToast] = useState(null);
+
 
   const fetchTechBrms = useCallback(async () => {
     try {
@@ -29,6 +50,17 @@ export default function TspTlDashboard() {
       console.error('Failed to load tech BRMs', err);
     }
   }, []);
+
+    // Fetch BRMs in READY_FOR_TASK_ALLOCATION phase
+  const fetchAllocBrms = useCallback(async () => {
+    try {
+      const res = await api.get('/brms', { params: { status: 'READY_FOR_TASK_ALLOCATION', limit: 100 } });
+      setAllocBrms(res.data.data.brms);
+    } catch (err) {
+      console.error('Failed to load allocation BRMs', err);
+    }
+  }, []);
+
 
   // Fetch only BRMs ready for architecture review
   const fetchAssignedBrms = useCallback(async (showSpinner = true) => {
@@ -60,17 +92,23 @@ export default function TspTlDashboard() {
     fetchAssignedBrms(true);
     fetchAllBrms(true);
     fetchTechBrms();
+    fetchAllocBrms();
+
     
     const interval = setInterval(() => {
       fetchAssignedBrms(false);
       fetchAllBrms(false);
       fetchTechBrms();
+      fetchAllocBrms();
+
     }, 10000);
     
     const onFocus = () => {
       fetchAssignedBrms(false);
       fetchAllBrms(false);
       fetchTechBrms();
+      fetchAllocBrms();
+
     };
     window.addEventListener('focus', onFocus);
     
@@ -148,6 +186,88 @@ export default function TspTlDashboard() {
 
 
 
+    // ─── Task Allocation Handlers ─────────────────────────────────────────────
+
+  const showAllocToast = (msg, type = 'success') => {
+    setAllocToast({ msg, type });
+    setTimeout(() => setAllocToast(null), 4000);
+  };
+
+    const openAllocModal = async (brm) => {
+    setAllocTarget(null); // clear first to show loading state
+    setAllocations([]);
+    setMatchedMembers([]);
+    setSelectedSkill('');
+    setAllocForm({ tspMemberId: '', skill: '', taskTitle: '', taskDescription: '', startDate: '', endDate: '' });
+    try {
+      // Fetch full BRM (includes technologyRequirements) + existing allocations in parallel
+      
+    const [brmRes, allocRes] = await Promise.all([
+        getBrm(brm.id),
+        getBrmAllocations(brm.id)
+      ]);
+      setAllocTarget(brmRes.data.data);   // ← now has technologyRequirements attached
+      setAllocations(allocRes.data.data);
+    } catch (err) {
+      console.error('Failed to load allocation data', err);
+    }
+  };
+
+
+  const handleFindMembers = async () => {
+    if (!selectedSkill) return;
+    setSearchingMembers(true);
+    setMatchedMembers([]);
+    try {
+      const res = await getTspMembersBySkill(selectedSkill);
+      setMatchedMembers(res.data.data);
+      setAllocForm(f => ({ ...f, skill: selectedSkill, tspMemberId: '' }));
+    } catch (err) {
+      showAllocToast('Failed to fetch members for this skill', 'error');
+    } finally {
+      setSearchingMembers(false);
+    }
+  };
+
+  const handleAllocSubmit = async (e) => {
+    e.preventDefault();
+    if (!allocForm.tspMemberId) return showAllocToast('Please select a team member', 'error');
+    if (!allocForm.taskTitle.trim()) return showAllocToast('Task title is required', 'error');
+    if (!allocForm.startDate || !allocForm.endDate) return showAllocToast('Start and end dates are required', 'error');
+    setAllocSubmitting(true);
+    try {
+      await allocateTask(allocTarget.id, allocForm);
+      showAllocToast('Task allocated successfully!');
+      // Refresh allocations list in modal
+      const res = await getBrmAllocations(allocTarget.id);
+      setAllocations(res.data.data);
+      // Reset form but keep skill context
+      setAllocForm({ tspMemberId: '', skill: '', taskTitle: '', taskDescription: '', startDate: '', endDate: '' });
+      setMatchedMembers([]);
+      setSelectedSkill('');
+    } catch (err) {
+      showAllocToast(err.response?.data?.message || 'Failed to allocate task', 'error');
+    } finally {
+      setAllocSubmitting(false);
+    }
+  };
+
+  const handleCompleteAllocation = async (allocationId) => {
+    if (!window.confirm('Mark this task as completed?')) return;
+    try {
+      await completeAllocation(allocTarget.id, allocationId);
+      showAllocToast('Marked as completed!');
+      const res = await getBrmAllocations(allocTarget.id);
+      setAllocations(res.data.data);
+      fetchAllocBrms();
+    } catch (err) {
+      showAllocToast('Failed to complete allocation', 'error');
+    }
+  };
+
+
+
+
 
   return (
     <div className="min-h-screen bg-dark-900">
@@ -207,6 +327,27 @@ export default function TspTlDashboard() {
               <span className="absolute bottom-0 left-0 w-full h-0.5 bg-brand-500 rounded-t-full shadow-[0_-2px_8px_rgba(249,115,22,0.5)]"></span>
             )}
           </button>
+
+
+                    <button
+            onClick={() => setActiveTab('allocation')}
+            className={`pb-4 text-sm font-medium transition-colors relative flex items-center gap-2 ${
+              activeTab === 'allocation' ? 'text-brand-400' : 'text-slate-400 hover:text-slate-300'
+            }`}
+          >
+            Task Allocation
+            {allocBrms.length > 0 && (
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                activeTab === 'allocation' ? 'bg-green-500/20 text-green-400' : 'bg-slate-700 text-slate-300'
+              }`}>
+                {allocBrms.length}
+              </span>
+            )}
+            {activeTab === 'allocation' && (
+              <span className="absolute bottom-0 left-0 w-full h-0.5 bg-green-500 rounded-t-full shadow-[0_-2px_8px_rgba(34,197,94,0.5)]"></span>
+            )}
+          </button>
+
 
         </div>
 
@@ -331,6 +472,259 @@ export default function TspTlDashboard() {
           </div>
         )}
 
+
+                {/* ─── TASK ALLOCATION TAB ─────────────────────────────────── */}
+        {activeTab === 'allocation' && (
+          <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-xl">
+            {allocBrms.length === 0 ? (
+              <div className="text-center py-20">
+                <div className="text-5xl mb-4">🎯</div>
+                <p className="text-slate-300 font-medium">No BRMs awaiting task allocation.</p>
+                <p className="text-slate-500 text-sm mt-1">BRMs will appear here once technology requirements are finalized.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-700 bg-slate-900/40">
+                      {['BRM Number', 'Title', 'Team', 'Priority', 'Actions'].map(h => (
+                        <th key={h} className="text-left text-slate-400 font-medium px-6 py-4 text-xs uppercase tracking-wide whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/50">
+                    {allocBrms.map((brm) => (
+                      <tr key={brm.id} className="hover:bg-slate-700/20">
+                        <td className="px-6 py-4"><span className="text-green-400 font-mono text-xs font-semibold">{brm.brmNumber}</span></td>
+                        <td className="px-6 py-4 text-white font-medium">{brm.title}</td>
+                        <td className="px-6 py-4 text-slate-300">{brm.TeamName}</td>
+                        <td className="px-6 py-4"><PriorityBadge priority={brm.priority} /></td>
+                        <td className="px-6 py-4">
+                          <button onClick={() => openAllocModal(brm)}
+                            className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-medium shadow-lg shadow-green-500/20 transition-colors">
+                            Allocate Tasks
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── TASK ALLOCATION MODAL ───────────────────────────────── */}
+        {allocTarget && (
+          <Modal title={`Task Allocation: ${allocTarget.brmNumber}`} onClose={() => setAllocTarget(null)} wide>
+            <div className="space-y-6">
+
+              {/* Toast inside modal */}
+              {allocToast && (
+                <div className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border ${
+                  allocToast.type === 'error'
+                    ? 'bg-red-500/15 border-red-500/30 text-red-300'
+                    : 'bg-green-500/15 border-green-500/30 text-green-300'
+                }`}>
+                  {allocToast.type === 'error' ? '✕' : '✓'} {allocToast.msg}
+                </div>
+              )}
+
+              {/* BRM Info */}
+              <div className="grid grid-cols-3 gap-4 p-4 bg-slate-900 rounded-xl border border-slate-700">
+                <div>
+                  <p className="text-slate-400 text-xs font-medium mb-1">BRM</p>
+                  <p className="text-green-400 font-mono text-sm font-bold">{allocTarget.brmNumber}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 text-xs font-medium mb-1">Title</p>
+                  <p className="text-white text-sm truncate">{allocTarget.title}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400 text-xs font-medium mb-1">Team</p>
+                  <p className="text-slate-300 text-sm">{allocTarget.TeamName}</p>
+                </div>
+              </div>
+
+              {/* Technology Requirements (pre-fetched on the BRM object) */}
+              {allocTarget.technologyRequirements && allocTarget.technologyRequirements.length > 0 && (
+                <div>
+                  <p className="text-slate-300 text-sm font-semibold mb-2">Technology Requirements</p>
+                  <div className="flex flex-wrap gap-2">
+                    {allocTarget.technologyRequirements.map((req, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setSelectedSkill(req.technologyName)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                          selectedSkill === req.technologyName
+                            ? 'bg-green-500/20 border-green-500/40 text-green-300'
+                            : 'bg-slate-700 border-slate-600 text-slate-300 hover:border-slate-500'
+                        }`}
+                      >
+                        {req.technologyName} · {req.resourceCount} {req.allocationType === 'FULL_TIME' ? 'FT' : 'Shared'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Skill Finder */}
+              <div className="p-4 bg-slate-900/60 rounded-xl border border-slate-700/60 space-y-4">
+                <p className="text-slate-300 text-sm font-semibold">Assign a New Task</p>
+                <div className="flex gap-3">
+                    <select
+                    value={selectedSkill}
+                    onChange={e => setSelectedSkill(e.target.value)}
+                    className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500"
+                  >
+                    <option value="">-- Select a skill --</option>
+                    {TECH_SKILLS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+
+                  <button
+                    onClick={handleFindMembers}
+                    disabled={!selectedSkill || searchingMembers}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    {searchingMembers ? 'Searching...' : 'Find Members'}
+                  </button>
+                </div>
+
+                {/* Member Dropdown Results */}
+                {matchedMembers.length > 0 && (
+                  <div className="space-y-3">
+                    <p className="text-slate-400 text-xs">{matchedMembers.length} member(s) found with skill: <span className="text-green-400 font-semibold">{selectedSkill}</span></p>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {matchedMembers.map(m => (
+                        <div
+                          key={m.id}
+                          onClick={() => setAllocForm(f => ({ ...f, tspMemberId: m.id, skill: selectedSkill }))}
+                          className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                            allocForm.tspMemberId === m.id
+                              ? 'bg-green-500/10 border-green-500/40'
+                              : 'bg-slate-800 border-slate-700 hover:border-slate-500'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-white text-sm font-semibold">{m.name}</p>
+                              <p className="text-slate-400 text-xs">{m.email}{m.mobileNumber ? ` · ${m.mobileNumber}` : ''}</p>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                              m.activeTaskCount === 0 ? 'bg-green-500/20 text-green-400' :
+                              m.activeTaskCount <= 2 ? 'bg-yellow-500/20 text-yellow-400' :
+                              'bg-red-500/20 text-red-400'
+                            }`}>
+                              {m.activeTaskCount} active task{m.activeTaskCount !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                          {m.activeTasks.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              {m.activeTasks.map((t, i) => (
+                                <p key={i} className="text-xs text-slate-500">
+                                  📌 {t.taskTitle} — <span className="text-slate-400">{t.brmNumber}</span> · due {new Date(t.endDate).toLocaleDateString()}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {matchedMembers.length === 0 && !searchingMembers && selectedSkill && (
+                  <p className="text-slate-500 text-xs italic">Click "Find Members" to search for available team members.</p>
+                )}
+
+                {/* Task Form — only show once a member is selected */}
+                {allocForm.tspMemberId && (
+                  <form onSubmit={handleAllocSubmit} className="space-y-3 pt-3 border-t border-slate-700">
+                    <p className="text-slate-300 text-xs font-semibold uppercase tracking-wide">Task Details</p>
+                    <input
+                      type="text"
+                      placeholder="Task Title *"
+                      value={allocForm.taskTitle}
+                      onChange={e => setAllocForm(f => ({ ...f, taskTitle: e.target.value }))}
+                      required
+                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-green-500"
+                    />
+                    <textarea
+                      placeholder="Task Description (optional)"
+                      value={allocForm.taskDescription}
+                      onChange={e => setAllocForm(f => ({ ...f, taskDescription: e.target.value }))}
+                      rows={2}
+                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-green-500 resize-none"
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-400 text-xs mb-1">Start Date *</label>
+                        <input
+                          type="date"
+                          value={allocForm.startDate}
+                          onChange={e => setAllocForm(f => ({ ...f, startDate: e.target.value }))}
+                          required
+                          className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 text-xs mb-1">End Date *</label>
+                        <input
+                          type="date"
+                          value={allocForm.endDate}
+                          onChange={e => setAllocForm(f => ({ ...f, endDate: e.target.value }))}
+                          required
+                          className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500"
+                        />
+                      </div>
+                    </div>
+                    <button type="submit" disabled={allocSubmitting}
+                      className="w-full py-2.5 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors">
+                      {allocSubmitting ? 'Assigning...' : '✓ Assign Task'}
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              {/* Existing Allocations */}
+              {allocations.length > 0 && (
+                <div>
+                  <p className="text-slate-300 text-sm font-semibold mb-3">Current Allocations ({allocations.length})</p>
+                  <div className="space-y-2">
+                    {allocations.map(a => (
+                      <div key={a.id} className="flex items-center justify-between p-3 bg-slate-900 rounded-xl border border-slate-700">
+                        <div>
+                          <p className="text-white text-sm font-medium">{a.taskTitle}</p>
+                          <p className="text-slate-400 text-xs mt-0.5">
+                            {a.tspMember?.user?.firstName} {a.tspMember?.user?.lastName} · <span className="text-green-400">{a.skill}</span> · {new Date(a.startDate).toLocaleDateString()} → {new Date(a.endDate).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            a.status === 'ACTIVE' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'
+                          }`}>
+                            {a.status}
+                          </span>
+                          {a.status === 'ACTIVE' && (
+                            <button onClick={() => handleCompleteAllocation(a.id)}
+                              className="px-2 py-1 text-[10px] rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 border border-slate-600 transition-colors">
+                              Mark Done
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </Modal>
+        )}
+
+
+
+
                 {/* --- ADD REQUIREMENTS MODAL --- */}
         {resourceTarget && (
           <Modal title={`Resource Allocation: ${resourceTarget.brmNumber}`} onClose={() => setResourceTarget(null)} wide>
@@ -380,12 +774,16 @@ export default function TspTlDashboard() {
                 <h4 className="text-brand-400 text-sm font-semibold mb-3">Add New Requirement</h4>
                 <div className="flex items-end gap-4">
                   <div className="flex-1">
-                    <label className="block text-xs font-medium text-slate-400 mb-1">Technology Name</label>
-                    <input type="text" required placeholder="e.g. React, Node.js"
+                                        <label className="block text-xs font-medium text-slate-400 mb-1">Technology / Skill</label>
+                    <select required
                       value={requirement.technologyName}
                       onChange={(e) => setRequirement({...requirement, technologyName: e.target.value})}
                       className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm outline-none"
-                    />
+                    >
+                      <option value="">-- Select a skill --</option>
+                      {TECH_SKILLS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+
                   </div>
                   <div className="w-24">
                     <label className="block text-xs font-medium text-slate-400 mb-1">Count</label>

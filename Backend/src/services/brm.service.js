@@ -659,3 +659,63 @@ export const finalizeTechnologyRequirements = async (brmId, tspTlId) => {
   return { message: "Technology requirements finalized successfully." };
 };
 
+
+
+
+// Task Allocation
+export const allocateTask = async (brmId, tspTlId, { tspMemberId, skill, taskTitle, taskDescription, startDate, endDate }) => {
+  const brm = await prisma.brm.findUnique({ where: { id: brmId } });
+  if (!brm) throw new ApiError(404, "BRM not found");
+  if (brm.currentStatus !== "READY_FOR_TASK_ALLOCATION") {
+    throw new ApiError(400, "BRM is not in READY_FOR_TASK_ALLOCATION status");
+  }
+
+  const memberProfile = await prisma.tspMemberProfile.findUnique({ where: { id: tspMemberId } });
+  if (!memberProfile) throw new ApiError(404, "TSP Member Profile not found");
+
+  const allocation = await prisma.taskAllocation.create({
+    data: {
+      brmId,
+      tspMemberId,
+      skill,
+      taskTitle,
+      taskDescription,
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+      assignedById: tspTlId,
+      status: 'ACTIVE'
+    },
+    include: {
+      tspMember: {
+        include: { user: { select: { firstName: true, lastName: true, email: true } } }
+      }
+    }
+  });
+
+  return allocation;
+};
+
+export const getBrmAllocations = async (brmId) => {
+  const allocations = await prisma.taskAllocation.findMany({
+    where: { brmId },
+    include: {
+      tspMember: {
+        include: { user: { select: { firstName: true, lastName: true, email: true } } }
+      },
+      assignedBy: { select: { firstName: true, lastName: true } }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  return allocations;
+};
+
+export const completeAllocation = async (allocationId) => {
+  const allocation = await prisma.taskAllocation.findUnique({ where: { id: allocationId } });
+  if (!allocation) throw new ApiError(404, "Allocation not found");
+
+  return prisma.taskAllocation.update({
+    where: { id: allocationId },
+    data: { status: 'COMPLETED' }
+  });
+};

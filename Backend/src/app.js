@@ -11,6 +11,7 @@ import adminRoutes from "./routes/admin.routes.js";
 import brmRoutes from "./routes/brm.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import userStoryRoutes from "./routes/userStory.routes.js";
+import tspProfileRoutes from "./routes/tspProfile.routes.js";
 
 
 
@@ -84,6 +85,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/brms", brmRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/user-stories", userStoryRoutes);
+app.use('/api/tsp-profiles', tspProfileRoutes);
+
 
 
 // ─── 404 Handler ────────────────────────────────────────────────────────────

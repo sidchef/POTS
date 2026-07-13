@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { getAllTspProfiles, updateTspProfile } from '../../api/tspProfile.api.js';
+import { TECH_SKILLS } from '../../constants/skills.js';
+
 import api from '../../api/axios';
 
 // --- Role badge colors ---
@@ -75,6 +78,14 @@ export default function AdminDashboard() {
   // Reset password form
   const [newPassword, setNewPassword] = useState('');
 
+
+    // TSP Member Profile management
+  const [showProfileEdit, setShowProfileEdit] = useState(null); // holds user object
+  const [tspProfiles, setTspProfiles] = useState({});           // { userId: profileData }
+  const [profileForm, setProfileForm] = useState({ mobileNumber: '', skills: [] });
+  const [savingProfile, setSavingProfile] = useState(false);
+
+
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -96,8 +107,20 @@ export default function AdminDashboard() {
     }
   }, [page, search, roleFilter]);
 
+
+  const fetchTspProfiles = async () => {
+    try {
+      const res = await getAllTspProfiles();
+      const map = {};
+      res.data.data.forEach(p => { map[p.userId] = p; });
+      setTspProfiles(map);
+    } catch { /* silently fail */ }
+  };
+
+
   useEffect(() => {
     fetchUsers(true);
+    fetchTspProfiles();
     const interval = setInterval(() => fetchUsers(false), 10000);
     const onFocus = () => fetchUsers(false);
     window.addEventListener('focus', onFocus);
@@ -161,6 +184,38 @@ export default function AdminDashboard() {
       showToast(err.response?.data?.message || 'Failed to reset password', 'error');
     }
   };
+
+
+    const handleSaveProfile = async () => {
+    setSavingProfile(true);
+    try {
+      await updateTspProfile(showProfileEdit.id, profileForm);
+      showToast('Profile updated successfully');
+      setShowProfileEdit(null);
+      fetchTspProfiles();
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update profile', 'error');
+    } finally { setSavingProfile(false); }
+  };
+
+  const toggleSkill = (skill) => {
+    setProfileForm(prev => ({
+      ...prev,
+      skills: prev.skills.includes(skill)
+        ? prev.skills.filter(s => s !== skill)
+        : [...prev.skills, skill]
+    }));
+  };
+
+  const openProfileEdit = (u) => {
+    const existing = tspProfiles[u.id];
+    setProfileForm({
+      mobileNumber: existing?.mobileNumber || '',
+      skills: existing?.skills || []
+    });
+    setShowProfileEdit(u);
+  };
+
 
   const toggleRoleSelection = (roleName) => {
     setSelectedRoles((prev) =>
@@ -321,6 +376,16 @@ export default function AdminDashboard() {
                             className="px-2.5 py-1 rounded-lg bg-yellow-500/20 text-yellow-400 text-xs hover:bg-yellow-500/30 border border-yellow-500/30">
                             Reset PW
                           </button>
+
+                          {u.roles.some(r => r.name === 'TSP_TEAM_MEMBER') && (
+                          <button onClick={() => openProfileEdit(u)}
+                            className="px-2.5 py-1 text-xs rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 border border-green-500/30 transition-all font-medium">
+                            Edit Profile
+                          </button>
+                          )}
+
+
+
                         </div>
                       </td>
                     </tr>
@@ -415,6 +480,77 @@ export default function AdminDashboard() {
           </div>
         </Modal>
       )}
+
+            {/* ─── TSP MEMBER PROFILE EDIT MODAL ─────────────────── */}
+      {showProfileEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(2,6,23,0.88)', backdropFilter: 'blur(4px)' }}>
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-2xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700">
+              <div>
+                <h3 className="text-white font-semibold text-lg">Edit TSP Member Profile</h3>
+                <p className="text-slate-400 text-sm">{showProfileEdit.firstName} {showProfileEdit.lastName} · {showProfileEdit.email}</p>
+              </div>
+              <button onClick={() => setShowProfileEdit(null)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <div className="p-6 space-y-5">
+              {/* Mobile Number */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">Mobile Number</label>
+                <input
+                  type="text"
+                  placeholder="+91 98765 43210"
+                  value={profileForm.mobileNumber}
+                  onChange={e => setProfileForm(p => ({ ...p, mobileNumber: e.target.value }))}
+                  className="w-full px-4 py-2.5 rounded-lg bg-slate-900/60 border border-slate-600/50 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                />
+              </div>
+
+              {/* Skills */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Skills <span className="text-slate-500 text-xs font-normal">({profileForm.skills.length} selected)</span>
+                </label>
+                <div className="flex flex-wrap gap-2 max-h-64 overflow-y-auto p-1">
+                  {TECH_SKILLS.map(skill => (
+                    <button
+                      key={skill}
+                      type="button"
+                      onClick={() => toggleSkill(skill)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                        profileForm.skills.includes(skill)
+                          ? 'bg-green-500/20 border-green-500/40 text-green-300'
+                          : 'bg-slate-700/50 border-slate-600 text-slate-400 hover:border-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {profileForm.skills.includes(skill) ? '✓ ' : ''}{skill}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Selected skills preview */}
+              {profileForm.skills.length > 0 && (
+                <div className="p-3 bg-slate-900/60 rounded-lg border border-slate-700/60">
+                  <p className="text-slate-400 text-xs mb-2">Selected skills:</p>
+                  <p className="text-green-400 text-sm">{profileForm.skills.join(', ')}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowProfileEdit(null)}
+                  className="flex-1 py-2.5 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-700 text-sm font-medium transition-colors">
+                  Cancel
+                </button>
+                <button onClick={handleSaveProfile} disabled={savingProfile}
+                  className="flex-1 py-2.5 rounded-lg bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white text-sm font-medium transition-colors">
+                  {savingProfile ? 'Saving...' : 'Save Profile'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

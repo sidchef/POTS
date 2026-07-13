@@ -165,4 +165,28 @@ export const finalizeTechnologyRequirements = async (req, res, next) => {
 };
 
 
+export const allocateTask = async (req, res, next) => {
+  try {
+    const data = await brmService.allocateTask(req.params.id, req.user.id, req.body);
+    res.status(201).json({ success: true, data });
+  } catch (err) { next(err); }
+};
+
+export const getBrmAllocations = async (req, res, next) => {
+  try {
+    const data = await brmService.getBrmAllocations(req.params.id);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+};
+
+export const completeAllocation = async (req, res, next) => {
+  try {
+    const data = await brmService.completeAllocation(req.params.allocationId);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+};
+
+
+
+
 

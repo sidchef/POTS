@@ -3,7 +3,8 @@ import { authenticate, authorize } from "../middleware/auth.middleware.js";
 import {
   createBrm, updateBrm, submitBrm, getBrmById,
   listBrms, approveBrm, rejectBrm, getMyPendingApprovals,
-  assignBrmToTm, submitUserStories, assignBrmToTspTl, submitArchitecture, approveArchitecture,addTechnologyRequirement, finalizeTechnologyRequirements // ⬅️ Added new functions here
+  assignBrmToTm, submitUserStories, assignBrmToTspTl, submitArchitecture, approveArchitecture,addTechnologyRequirement, finalizeTechnologyRequirements,
+  allocateTask,getBrmAllocations,completeAllocation // ⬅️ Added new functions here
 } from "../controllers/brm.controller.js";
 import prisma from "../config/prisma.js";
 import { uploadArchitecture } from "../middleware/upload.middleware.js";
@@ -53,6 +54,12 @@ router.post("/:id/approve-architecture", authorize("CREATE_BRM"), approveArchite
 //Technology submission
 router.post("/:id/technology-requirements/add", authorize("SUBMIT_ARCHITECTURE"), addTechnologyRequirement);
 router.post("/:id/technology-requirements/submit", authorize("SUBMIT_ARCHITECTURE"), finalizeTechnologyRequirements);
+
+
+//Task Allocation
+router.post("/:id/allocate-task", authenticate, authorize("SUBMIT_ARCHITECTURE"), allocateTask);
+router.get("/:id/allocations", authenticate, getBrmAllocations);
+router.patch("/:id/allocations/:allocationId/complete", authenticate, authorize("SUBMIT_ARCHITECTURE"), completeAllocation);
 
 
 

@@ -26,4 +26,9 @@ export const addTechnologyRequirement = (id, requirement) => api.post(`/brms/${i
 export const finalizeTechnologyRequirements = (id) => api.post(`/brms/${id}/technology-requirements/submit`);
 
 
+export const allocateTask = (brmId, data) => api.post(`/brms/${brmId}/allocate-task`, data);
+export const getBrmAllocations = (brmId) => api.get(`/brms/${brmId}/allocations`);
+export const completeAllocation = (brmId, allocationId) => api.patch(`/brms/${brmId}/allocations/${allocationId}/complete`);
+
+
 
