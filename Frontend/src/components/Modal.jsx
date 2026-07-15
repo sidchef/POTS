@@ -2,8 +2,7 @@ import React from 'react';
 
 export default function Modal({ title, onClose, children, wide }) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-      style={{ background: 'rgba(2,6,23,0.85)', backdropFilter: 'blur(4px)' }}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className={`bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl w-full ${wide ? 'max-w-2xl' : 'max-w-lg'}`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700">
           <h3 className="text-white font-semibold text-lg">{title}</h3>

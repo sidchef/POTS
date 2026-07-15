@@ -54,12 +54,14 @@ export default function TspTlDashboard() {
     // Fetch BRMs in READY_FOR_TASK_ALLOCATION phase
   const fetchAllocBrms = useCallback(async () => {
     try {
-      const res = await api.get('/brms', { params: { status: 'READY_FOR_TASK_ALLOCATION', limit: 100 } });
+      const res = await api.get('/brms', { params: { status: 'READY_FOR_TASK_ALLOCATION,CODING_IN_PROGRESS', limit: 100 } });
       setAllocBrms(res.data.data.brms);
     } catch (err) {
       console.error('Failed to load allocation BRMs', err);
     }
   }, []);
+
+  
 
 
   // Fetch only BRMs ready for architecture review
