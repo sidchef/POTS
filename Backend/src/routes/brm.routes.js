@@ -4,7 +4,7 @@ import {
   createBrm, updateBrm, submitBrm, getBrmById,
   listBrms, approveBrm, rejectBrm, getMyPendingApprovals,
   assignBrmToTm, submitUserStories, assignBrmToTspTl, submitArchitecture, approveArchitecture,addTechnologyRequirement, finalizeTechnologyRequirements,
-  allocateTask,getBrmAllocations,completeAllocation // ⬅️ Added new functions here
+  allocateTask,getBrmAllocations,completeAllocation , getMyAssignedTasks, getQaMembers, assignTaskToQa// ⬅️ Added new functions here
 } from "../controllers/brm.controller.js";
 import prisma from "../config/prisma.js";
 import { uploadArchitecture } from "../middleware/upload.middleware.js";
@@ -34,6 +34,8 @@ router.get("/users/by-role", authorize("CREATE_BRM"), async (req, res, next) => 
     res.status(200).json({ success: true, data: users });
   } catch (err) { next(err); }
 });
+router.get("/allocations/assigned-by-me", authorize("SUBMIT_ARCHITECTURE"), getMyAssignedTasks);
+
 router.get("/my-pending-approvals", authorize("COMMITTEE_REVIEW"), getMyPendingApprovals);
 router.get("/", authorize("BRM_DASHBOARD"), listBrms);
 router.get("/:id", authorize("BRM_DETAILS"), getBrmById);
@@ -60,6 +62,11 @@ router.post("/:id/technology-requirements/submit", authorize("SUBMIT_ARCHITECTUR
 router.post("/:id/allocate-task", authenticate, authorize("SUBMIT_ARCHITECTURE"), allocateTask);
 router.get("/:id/allocations", authenticate, getBrmAllocations);
 router.patch("/:id/allocations/:allocationId/complete", authenticate, authorize("SUBMIT_ARCHITECTURE"), completeAllocation);
+
+//QA Allocation
+router.get("/qa-members", authenticate, authorize("SUBMIT_ARCHITECTURE"), getQaMembers);
+router.post("/allocations/assign-qa", authenticate, authorize("SUBMIT_ARCHITECTURE"), assignTaskToQa);
+
 
 
 

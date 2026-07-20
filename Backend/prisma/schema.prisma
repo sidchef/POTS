@@ -113,6 +113,9 @@ model User {
 
   taskAllocationProgressLogs TaskAllocationProgress[]
 
+    qaAllocations    TaskAllocation[] @relation("QaMemberAllocations")
+
+
 
 
 
@@ -790,6 +793,9 @@ model TaskAllocation {
   endDate          DateTime
   status           TaskAllocationStatus @default(ACTIVE)
   assignedById     String
+  qaMemberId       String?
+  qaMember         User?                @relation("QaMemberAllocations", fields: [qaMemberId], references: [id])
+
 
   brm              Brm                @relation(fields: [brmId], references: [id])
   tspMember        TspMemberProfile   @relation(fields: [tspMemberId], references: [id])
@@ -805,6 +811,7 @@ model TaskAllocation {
 enum TaskAllocationStatus {
   ACTIVE
   COMPLETED
+  QA_TESTING
 }
 
 

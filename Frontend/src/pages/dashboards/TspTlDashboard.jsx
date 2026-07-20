@@ -7,6 +7,10 @@ import { submitArchitecture, addTechnologyRequirement, finalizeTechnologyRequire
 import { getTspMembersBySkill } from '../../api/tspProfile.api.js';
 import Modal from '../../components/Modal.jsx';
 import { TECH_SKILLS } from '../../constants/skills.js';
+import TaskManagementLayout from '../../components/taskManagement/TaskManagementLayout.jsx';
+
+
+
 
 
 
@@ -31,8 +35,7 @@ export default function TspTlDashboard() {
   const [matchedMembers, setMatchedMembers] = useState([]);  // TMs returned by API
   const [searchingMembers, setSearchingMembers] = useState(false);
   const [allocForm, setAllocForm] = useState({
-    tspMemberId: '',
-    skill: '',
+    assignments: [],
     taskTitle: '',
     taskDescription: '',
     startDate: '',
@@ -40,6 +43,7 @@ export default function TspTlDashboard() {
   });
   const [allocSubmitting, setAllocSubmitting] = useState(false);
   const [allocToast, setAllocToast] = useState(null);
+  const [taskRefreshTrigger, setTaskRefreshTrigger] = useState(0);
 
 
   const fetchTechBrms = useCallback(async () => {
@@ -200,7 +204,7 @@ export default function TspTlDashboard() {
     setAllocations([]);
     setMatchedMembers([]);
     setSelectedSkill('');
-    setAllocForm({ tspMemberId: '', skill: '', taskTitle: '', taskDescription: '', startDate: '', endDate: '' });
+    setAllocForm({ assignments:[], taskTitle: '', taskDescription: '', startDate: '', endDate: '' });
     try {
       // Fetch full BRM (includes technologyRequirements) + existing allocations in parallel
       
@@ -231,20 +235,41 @@ export default function TspTlDashboard() {
     }
   };
 
+    
+    const toggleMemberSelection = (memberId, memberSkill, memberName) => {
+    setAllocForm(prev => {
+      const current = prev.assignments || [];
+      const exists = current.some(a => a.tspMemberId === memberId);
+      if (exists) {
+        return { ...prev, assignments: current.filter(a => a.tspMemberId !== memberId) };
+      } else {
+        return { ...prev, assignments: [...current, { tspMemberId: memberId, skill: memberSkill, name: memberName }] };
+      }
+    });
+  };
+
+
+
   const handleAllocSubmit = async (e) => {
-    e.preventDefault();
-    if (!allocForm.tspMemberId) return showAllocToast('Please select a team member', 'error');
-    if (!allocForm.taskTitle.trim()) return showAllocToast('Task title is required', 'error');
-    if (!allocForm.startDate || !allocForm.endDate) return showAllocToast('Start and end dates are required', 'error');
+     e.preventDefault();
+    if (!allocForm.taskTitle || !allocForm.startDate || !allocForm.endDate || !allocForm.assignments || allocForm.assignments.length === 0) {
+      setAllocToast({ type: 'error', msg: "Please fill all required fields and select at least one member" });
+      return;
+    }
     setAllocSubmitting(true);
     try {
       await allocateTask(allocTarget.id, allocForm);
       showAllocToast('Task allocated successfully!');
+       setAllocTarget(null); // Close modal
+      fetchAllocBrms();
+      
+      // trigger to tell the layout to refresh:
+      setTaskRefreshTrigger(prev => prev + 1);
       // Refresh allocations list in modal
       const res = await getBrmAllocations(allocTarget.id);
       setAllocations(res.data.data);
       // Reset form but keep skill context
-      setAllocForm({ tspMemberId: '', skill: '', taskTitle: '', taskDescription: '', startDate: '', endDate: '' });
+      setAllocForm({ assignments:[], taskTitle: '', taskDescription: '', startDate: '', endDate: '' });
       setMatchedMembers([]);
       setSelectedSkill('');
     } catch (err) {
@@ -337,7 +362,7 @@ export default function TspTlDashboard() {
               activeTab === 'allocation' ? 'text-brand-400' : 'text-slate-400 hover:text-slate-300'
             }`}
           >
-            Task Allocation
+            Task Management
             {allocBrms.length > 0 && (
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                 activeTab === 'allocation' ? 'bg-green-500/20 text-green-400' : 'bg-slate-700 text-slate-300'
@@ -477,43 +502,11 @@ export default function TspTlDashboard() {
 
                 {/* ─── TASK ALLOCATION TAB ─────────────────────────────────── */}
         {activeTab === 'allocation' && (
-          <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-xl">
-            {allocBrms.length === 0 ? (
-              <div className="text-center py-20">
-                <div className="text-5xl mb-4">🎯</div>
-                <p className="text-slate-300 font-medium">No BRMs awaiting task allocation.</p>
-                <p className="text-slate-500 text-sm mt-1">BRMs will appear here once technology requirements are finalized.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-700 bg-slate-900/40">
-                      {['BRM Number', 'Title', 'Team', 'Priority', 'Actions'].map(h => (
-                        <th key={h} className="text-left text-slate-400 font-medium px-6 py-4 text-xs uppercase tracking-wide whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-700/50">
-                    {allocBrms.map((brm) => (
-                      <tr key={brm.id} className="hover:bg-slate-700/20">
-                        <td className="px-6 py-4"><span className="text-green-400 font-mono text-xs font-semibold">{brm.brmNumber}</span></td>
-                        <td className="px-6 py-4 text-white font-medium">{brm.title}</td>
-                        <td className="px-6 py-4 text-slate-300">{brm.TeamName}</td>
-                        <td className="px-6 py-4"><PriorityBadge priority={brm.priority} /></td>
-                        <td className="px-6 py-4">
-                          <button onClick={() => openAllocModal(brm)}
-                            className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-500 text-white text-xs font-medium shadow-lg shadow-green-500/20 transition-colors">
-                            Allocate Tasks
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <TaskManagementLayout 
+            brmsNeedingAllocation={allBrms.filter(b => b.currentStatus === 'READY_FOR_TASK_ALLOCATION' || b.currentStatus === 'CODING_IN_PROGRESS')}
+            onSelectBrmToAllocate={(brm) => openAllocModal(brm)}
+             refreshTrigger={taskRefreshTrigger} 
+          />
         )}
 
         {/* ─── TASK ALLOCATION MODAL ───────────────────────────────── */}
@@ -548,6 +541,36 @@ export default function TspTlDashboard() {
                 </div>
               </div>
 
+                            {/* User Stories (pre-fetched on the BRM object) */}
+              {allocTarget.userStory && allocTarget.userStory.length > 0 && (
+                <div className="mb-6">
+                  <p className="text-slate-300 text-sm font-semibold mb-3">User Stories</p>
+                  <div className="space-y-3 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
+                    {allocTarget.userStory.map((story) => (
+                      <div key={story.id} className="p-3 bg-slate-900/80 border border-slate-700/80 rounded-xl">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <span className="text-blue-400 font-mono text-xs font-bold mr-2">{story.storyNumber}</span>
+                            <span className="text-white text-sm font-medium">{story.title}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {story.priority && (
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                story.priority === 'High' ? 'bg-red-500/20 text-red-400' :
+                                story.priority === 'Medium' ? 'bg-orange-500/20 text-orange-400' :
+                                'bg-emerald-500/20 text-emerald-400'
+                              }`}>{story.priority}</span>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-slate-400 text-xs leading-relaxed">{story.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+
               {/* Technology Requirements (pre-fetched on the BRM object) */}
               {allocTarget.technologyRequirements && allocTarget.technologyRequirements.length > 0 && (
                 <div>
@@ -570,123 +593,158 @@ export default function TspTlDashboard() {
                 </div>
               )}
 
-              {/* Skill Finder */}
-              <div className="p-4 bg-slate-900/60 rounded-xl border border-slate-700/60 space-y-4">
-                <p className="text-slate-300 text-sm font-semibold">Assign a New Task</p>
-                <div className="flex gap-3">
-                    <select
-                    value={selectedSkill}
-                    onChange={e => setSelectedSkill(e.target.value)}
-                    className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500"
-                  >
-                    <option value="">-- Select a skill --</option>
-                    {TECH_SKILLS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-
-                  <button
-                    onClick={handleFindMembers}
-                    disabled={!selectedSkill || searchingMembers}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors"
-                  >
-                    {searchingMembers ? 'Searching...' : 'Find Members'}
-                  </button>
-                </div>
-
-                {/* Member Dropdown Results */}
-                {matchedMembers.length > 0 && (
-                  <div className="space-y-3">
-                    <p className="text-slate-400 text-xs">{matchedMembers.length} member(s) found with skill: <span className="text-green-400 font-semibold">{selectedSkill}</span></p>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {matchedMembers.map(m => (
-                        <div
-                          key={m.id}
-                          onClick={() => setAllocForm(f => ({ ...f, tspMemberId: m.id, skill: selectedSkill }))}
-                          className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                            allocForm.tspMemberId === m.id
-                              ? 'bg-green-500/10 border-green-500/40'
-                              : 'bg-slate-800 border-slate-700 hover:border-slate-500'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-white text-sm font-semibold">{m.name}</p>
-                              <p className="text-slate-400 text-xs">{m.email}{m.mobileNumber ? ` · ${m.mobileNumber}` : ''}</p>
-                            </div>
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                              m.activeTaskCount === 0 ? 'bg-green-500/20 text-green-400' :
-                              m.activeTaskCount <= 2 ? 'bg-yellow-500/20 text-yellow-400' :
-                              'bg-red-500/20 text-red-400'
-                            }`}>
-                              {m.activeTaskCount} active task{m.activeTaskCount !== 1 ? 's' : ''}
-                            </span>
-                          </div>
-                          {m.activeTasks.length > 0 && (
-                            <div className="mt-2 space-y-1">
-                              {m.activeTasks.map((t, i) => (
-                                <p key={i} className="text-xs text-slate-500">
-                                  📌 {t.taskTitle} — <span className="text-slate-400">{t.brmNumber}</span> · due {new Date(t.endDate).toLocaleDateString()}
-                                </p>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                            {/* Task Creation & Member Assignment Flow */}
+              <div className="p-4 bg-slate-900/60 rounded-xl border border-slate-700/60 space-y-6">
+                
+                {/* 1. Task Details */}
+                <div className="space-y-3">
+                  <p className="text-slate-300 text-sm font-semibold border-b border-slate-700 pb-2">1. Task Details</p>
+                  <input
+                    type="text"
+                    placeholder="Task Title *"
+                    value={allocForm.taskTitle}
+                    onChange={e => setAllocForm(f => ({ ...f, taskTitle: e.target.value }))}
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-green-500"
+                  />
+                  <textarea
+                    placeholder="Task Description (optional)"
+                    value={allocForm.taskDescription}
+                    onChange={e => setAllocForm(f => ({ ...f, taskDescription: e.target.value }))}
+                    rows={2}
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-green-500 resize-none"
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1">Start Date *</label>
+                      <input
+                        type="date"
+                        value={allocForm.startDate}
+                        onChange={e => setAllocForm(f => ({ ...f, startDate: e.target.value }))}
+                        className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1">End Date *</label>
+                      <input
+                        type="date"
+                        value={allocForm.endDate}
+                        onChange={e => setAllocForm(f => ({ ...f, endDate: e.target.value }))}
+                        className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500"
+                      />
                     </div>
                   </div>
-                )}
+                </div>
 
-                {matchedMembers.length === 0 && !searchingMembers && selectedSkill && (
-                  <p className="text-slate-500 text-xs italic">Click "Find Members" to search for available team members.</p>
-                )}
+                {/* 2. Assign Members */}
+                <div className="space-y-3 pt-2">
+                  <p className="text-slate-300 text-sm font-semibold border-b border-slate-700 pb-2">2. Assign Members</p>
+                  
+                                    <div className="flex gap-3">
+                    <select
+                      value={selectedSkill}
+                      onChange={e => setSelectedSkill(e.target.value)} // REMOVED the state reset here so you can keep members across skills!
+                      className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500"
+                    >
+                      <option value="">-- Select a skill --</option>
+                      {TECH_SKILLS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
 
-                {/* Task Form — only show once a member is selected */}
-                {allocForm.tspMemberId && (
-                  <form onSubmit={handleAllocSubmit} className="space-y-3 pt-3 border-t border-slate-700">
-                    <p className="text-slate-300 text-xs font-semibold uppercase tracking-wide">Task Details</p>
-                    <input
-                      type="text"
-                      placeholder="Task Title *"
-                      value={allocForm.taskTitle}
-                      onChange={e => setAllocForm(f => ({ ...f, taskTitle: e.target.value }))}
-                      required
-                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-green-500"
-                    />
-                    <textarea
-                      placeholder="Task Description (optional)"
-                      value={allocForm.taskDescription}
-                      onChange={e => setAllocForm(f => ({ ...f, taskDescription: e.target.value }))}
-                      rows={2}
-                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-green-500 resize-none"
-                    />
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-slate-400 text-xs mb-1">Start Date *</label>
-                        <input
-                          type="date"
-                          value={allocForm.startDate}
-                          onChange={e => setAllocForm(f => ({ ...f, startDate: e.target.value }))}
-                          required
-                          className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-slate-400 text-xs mb-1">End Date *</label>
-                        <input
-                          type="date"
-                          value={allocForm.endDate}
-                          onChange={e => setAllocForm(f => ({ ...f, endDate: e.target.value }))}
-                          required
-                          className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500"
-                        />
+                    <button
+                      onClick={handleFindMembers}
+                      disabled={!selectedSkill || searchingMembers}
+                      className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors border border-slate-600"
+                    >
+                      {searchingMembers ? 'Searching...' : 'Find Members'}
+                    </button>
+                  </div>
+
+                  {/* Member Dropdown Results */}
+                  {matchedMembers.length > 0 && (
+                    <div className="space-y-3 mt-3">
+                      <p className="text-slate-400 text-xs">{matchedMembers.length} member(s) found with skill: <span className="text-green-400 font-semibold">{selectedSkill}</span></p>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {matchedMembers.map(m => {
+                          const isSelected = allocForm.assignments.some(a => a.tspMemberId === m.id);
+                          return (
+                            <div
+                              key={m.id}
+                              onClick={() => toggleMemberSelection(m.id, selectedSkill,m.name)}
+                              className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                                isSelected
+                                  ? 'bg-green-500/15 border-green-500/50 shadow-[0_0_10px_rgba(34,197,94,0.1)]'
+                                  : 'bg-slate-800 border-slate-700 hover:border-slate-500'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  {/* Checkbox visual indicator */}
+                                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                                    isSelected ? 'bg-green-500 border-green-500 text-white' : 'border-slate-500'
+                                  }`}>
+                                    {isSelected && <span className="text-[10px]">✓</span>}
+                                  </div>
+                                  <div>
+                                    <p className="text-white text-sm font-semibold">{m.name}</p>
+                                    <p className="text-slate-400 text-xs">{m.email}{m.mobileNumber ? ` · ${m.mobileNumber}` : ''}</p>
+                                  </div>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                                  m.activeTaskCount === 0 ? 'bg-green-500/20 text-green-400' :
+                                  m.activeTaskCount <= 2 ? 'bg-yellow-500/20 text-yellow-400' :
+                                  'bg-red-500/20 text-red-400'
+                                }`}>
+                                  {m.activeTaskCount} active task{m.activeTaskCount !== 1 ? 's' : ''}
+                                </span>
+                              </div>
+                              {m.activeTasks.length > 0 && (
+                                <div className="mt-2 space-y-1 ml-7">
+                                  {m.activeTasks.map((t, i) => (
+                                    <p key={i} className="text-xs text-slate-500">
+                                      📌 {t.taskTitle} — <span className="text-slate-400">{t.brmNumber}</span> · due {new Date(t.endDate).toLocaleDateString()}
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                    <button type="submit" disabled={allocSubmitting}
-                      className="w-full py-2.5 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors">
-                      {allocSubmitting ? 'Assigning...' : '✓ Assign Task'}
-                    </button>
-                  </form>
-                )}
-              </div>
+                  )}
+
+                  {matchedMembers.length === 0 && !searchingMembers && selectedSkill && (
+                    <p className="text-slate-500 text-xs italic">Click "Find Members" to search for available team members.</p>
+                  )}
+                </div>
+
+                {/* Selected Members Summary & Final Submit Button */}
+                <div className="pt-4 border-t border-slate-700 space-y-4">
+                  
+                  {allocForm.assignments.length > 0 && (
+                    <div className="bg-slate-900/50 p-3 rounded-lg border border-slate-700">
+                      <p className="text-xs text-slate-400 mb-2 uppercase tracking-wide font-semibold">Selected Members ({allocForm.assignments.length})</p>
+                      <div className="flex flex-wrap gap-2">
+                        {allocForm.assignments.map(a => (
+                          <span key={a.tspMemberId} className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-md border border-green-500/30">
+                            <span className="text-white font-medium mr-1">{a.name}</span>
+                            <span className="opacity-75">({a.skill})</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <button 
+                    onClick={handleAllocSubmit} 
+                    disabled={allocSubmitting || !allocForm.taskTitle || !allocForm.startDate || !allocForm.endDate || !allocForm.assignments || allocForm.assignments.length === 0}
+                    className="w-full py-3 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white text-sm font-semibold rounded-lg transition-colors shadow-lg shadow-green-500/20"
+                  >
+                    {allocSubmitting ? 'Assigning...' : `✓ Assign Task to ${allocForm.assignments?.length || 0} Member${allocForm.assignments?.length !== 1 ? 's' : ''}`}
+                  </button>
+                </div>
+            </div>
+
+
 
               {/* Existing Allocations */}
               {allocations.length > 0 && (

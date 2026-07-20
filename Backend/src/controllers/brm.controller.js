@@ -3,6 +3,8 @@ import * as approvalService from "../services/approval.service.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import ApiError from "../utils/ApiError.js";
 
+
+
 // POST /api/brms
 export const createBrm = async (req, res, next) => {
   try {
@@ -186,6 +188,27 @@ export const completeAllocation = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+export const getMyAssignedTasks = async (req, res, next) => {
+  try {
+    const data = await brmService.getMyAssignedTasks(req.user.id);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+};
+
+export const getQaMembers = async (req, res, next) => {
+  try {
+    const data = await brmService.getQaMembers();
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+};
+
+export const assignTaskToQa = async (req, res, next) => {
+  try {
+    const { brmId, taskTitle, qaMemberId } = req.body;
+    await brmService.assignTaskToQa(brmId, taskTitle, qaMemberId);
+    res.json({ success: true, message: 'Task successfully assigned to QA' });
+  } catch (err) { next(err); }
+};
 
 
 

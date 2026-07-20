@@ -672,40 +672,59 @@ export const finalizeTechnologyRequirements = async (brmId, tspTlId) => {
 
 
 // Task Allocation
-export const allocateTask = async (brmId, tspTlId, { tspMemberId, skill, taskTitle, taskDescription, startDate, endDate }) => {
+export const allocateTask = async (brmId, tspTlId, { assignments, taskTitle, taskDescription, startDate, endDate }) => {
   const brm = await prisma.brm.findUnique({ where: { id: brmId } });
   if (!brm) throw new ApiError(404, "BRM not found");
   if (brm.currentStatus !== "READY_FOR_TASK_ALLOCATION" && brm.currentStatus !== "CODING_IN_PROGRESS") {
     throw new ApiError(400, "BRM is not in READY_FOR_TASK_ALLOCATION or CODING_IN_PROGRESS status");
   }
 
-  const memberProfile = await prisma.tspMemberProfile.findUnique({ where: { id: tspMemberId } });
-  if (!memberProfile) throw new ApiError(404, "TSP Member Profile not found");
+  if (!Array.isArray(assignments) || assignments.length === 0) {
+    throw new ApiError(400, "At least one TSP Member must be selected");
+  }
 
   // Set endDate to 23:59:59.999 of the selected date (midnight deadline)
   const allocationEndDate = new Date(endDate);
   allocationEndDate.setHours(23, 59, 59, 999);
 
-  const allocation = await prisma.taskAllocation.create({
-    data: {
-      brmId,
-      tspMemberId,
-      skill,
-      taskTitle,
-      taskDescription,
-      startDate: new Date(startDate),
-      endDate: allocationEndDate,
-      assignedById: tspTlId,
-      status: 'ACTIVE'
-    },
-    include: {
-      tspMember: {
-        include: { user: { select: { firstName: true, lastName: true, email: true } } }
-      }
-    }
-  });
+  const createdAllocations = [];
+  
+  for (const assignment of assignments) {
+    const { tspMemberId, skill } = assignment;
+    const memberProfile = await prisma.tspMemberProfile.findUnique({ where: { id: tspMemberId } });
+    if (!memberProfile) continue;
 
-  if (brm.currentStatus === "READY_FOR_TASK_ALLOCATION") {
+    const allocation = await prisma.taskAllocation.create({
+      data: {
+        brmId,
+        tspMemberId,
+        skill,
+        taskTitle,
+        taskDescription,
+        startDate: new Date(startDate),
+        endDate: allocationEndDate,
+        assignedById: tspTlId,
+        status: 'ACTIVE'
+      },
+      include: {
+        tspMember: {
+          include: { user: { select: { firstName: true, lastName: true, email: true } } }
+        }
+      }
+    });
+    createdAllocations.push(allocation);
+
+    // --- SLA SCHEDULING (24 hours before deadline) ---
+    const alertTimeMs = allocationEndDate.getTime() - (24 * 60 * 60 * 1000);
+    const delayMs = alertTimeMs - Date.now();
+    if (delayMs > 0) {
+      await slaQueue.add('taskSlaAlert', { allocationId: allocation.id }, { delay: delayMs });
+    } else {
+      await slaQueue.add('taskSlaAlert', { allocationId: allocation.id }, { delay: 0 });
+    }
+  }
+
+  if (brm.currentStatus === "READY_FOR_TASK_ALLOCATION" && createdAllocations.length > 0) {
     await prisma.brm.update({
       where: { id: brmId },
       data: { currentStatus: "CODING_IN_PROGRESS" }
@@ -720,7 +739,7 @@ export const allocateTask = async (brmId, tspTlId, { tspMemberId, skill, taskTit
         changedById: tspTlId
       }
     });
-    
+
     await logAction({
       userId: tspTlId,
       action: "BRM_CODING_STARTED",
@@ -730,20 +749,10 @@ export const allocateTask = async (brmId, tspTlId, { tspMemberId, skill, taskTit
     });
   }
 
-  // --- SLA SCHEDULING (24 hours before deadline) ---
-  const alertTimeMs = allocationEndDate.getTime() - (24 * 60 * 60 * 1000);
-  const delayMs = alertTimeMs - Date.now();
-
-  if (delayMs > 0) {
-    // Schedule for exactly 24h before deadline
-    await slaQueue.add('taskSlaAlert', { allocationId: allocation.id }, { delay: delayMs });
-  } else {
-    // If deadline is already within 24h, alert immediately
-    await slaQueue.add('taskSlaAlert', { allocationId: allocation.id });
-  }
-
-  return allocation;
+  return createdAllocations;
 };
+
+
 
 
 export const getBrmAllocations = async (brmId) => {
@@ -768,5 +777,50 @@ export const completeAllocation = async (allocationId) => {
   return prisma.taskAllocation.update({
     where: { id: allocationId },
     data: { status: 'COMPLETED' }
+  });
+};
+
+
+export const getMyAssignedTasks = async (tspTlId) => {
+  return await prisma.taskAllocation.findMany({
+    where: { assignedById: tspTlId },
+    include: {
+      brm: { select: { id: true, brmNumber: true, title: true, currentStatus: true } },
+      tspMember: {
+        include: { user: { select: { firstName: true, lastName: true, email: true } } }
+      },
+      milestones: true,
+      progressLogs: { orderBy: { createdAt: 'desc' }, take: 1 }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+};
+
+
+
+export const getQaMembers = async () => {
+  const qaMembers = await prisma.user.findMany({
+    where: { roles: { some: { role: { name: 'TSP_QA' } } } },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      _count: {
+        select: { qaAllocations: { where: { status: 'QA_TESTING' } } }
+      }
+    }
+  });
+
+  return qaMembers.map(m => ({
+    id: m.id,
+    name: `${m.firstName} ${m.lastName}`,
+    activeTasksCount: m._count.qaAllocations
+  }));
+};
+
+export const assignTaskToQa = async (brmId, taskTitle, qaMemberId) => {
+  return await prisma.taskAllocation.updateMany({
+    where: { brmId, taskTitle, status: 'COMPLETED' },
+    data: { status: 'QA_TESTING', qaMemberId }
   });
 };

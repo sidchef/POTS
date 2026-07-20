@@ -29,6 +29,8 @@ export const finalizeTechnologyRequirements = (id) => api.post(`/brms/${id}/tech
 export const allocateTask = (brmId, data) => api.post(`/brms/${brmId}/allocate-task`, data);
 export const getBrmAllocations = (brmId) => api.get(`/brms/${brmId}/allocations`);
 export const completeAllocation = (brmId, allocationId) => api.patch(`/brms/${brmId}/allocations/${allocationId}/complete`);
+export const getMyAssignedTasks = () => api.get('/brms/allocations/assigned-by-me');
+
 
 
 

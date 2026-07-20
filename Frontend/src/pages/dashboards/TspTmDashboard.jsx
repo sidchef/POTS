@@ -213,6 +213,11 @@ export default function TspTmDashboard() {
                   const completedMilestones = alloc.milestones?.filter(m => m.status === 'COMPLETED').length || 0;
                   const totalMilestones = alloc.milestones?.length || 0;
 
+                   let computedStatus = alloc.status;
+                  if (alloc.status === 'ACTIVE' && alloc.endDate && new Date(alloc.endDate) < new Date()) {
+                    computedStatus = 'BREACHED';
+                  }
+
                   return (
                         <div
                       key={alloc.id}
@@ -229,9 +234,15 @@ export default function TspTmDashboard() {
                           <p className="text-blue-600 dark:text-blue-400 font-mono text-xs mt-0.5">{alloc.brm?.brmNumber} · {alloc.brm?.title}</p>
                         </div>
 
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          alloc.status === 'ACTIVE' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'
-                        }`}>{alloc.status}</span>
+                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          computedStatus === 'BREACHED' 
+                            ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                            : computedStatus === 'ACTIVE' 
+                              ? 'bg-blue-500/20 text-blue-400' 
+                              : 'bg-green-500/20 text-green-400'
+                        }`}>
+                          {computedStatus}
+                        </span>
                       </div>
 
                       {/* Skill + dates */}
