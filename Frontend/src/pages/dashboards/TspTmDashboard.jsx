@@ -215,7 +215,7 @@ export default function TspTmDashboard() {
 
                    let computedStatus = alloc.status;
                   if (alloc.status === 'ACTIVE' && alloc.endDate && new Date(alloc.endDate) < new Date()) {
-                    computedStatus = 'BREACHED';
+                    computedStatus = 'DELAYED';
                   }
 
                   return (
@@ -235,7 +235,7 @@ export default function TspTmDashboard() {
                         </div>
 
                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          computedStatus === 'BREACHED' 
+                          computedStatus === 'DELAYED' 
                             ? 'bg-red-500/20 text-red-400 border border-red-500/30'
                             : computedStatus === 'ACTIVE' 
                               ? 'bg-blue-500/20 text-blue-400' 

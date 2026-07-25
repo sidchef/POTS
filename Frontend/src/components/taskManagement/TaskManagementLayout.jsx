@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { getMyAssignedTasks } from '../../api/brm.api.js';
+import api from '../../api/axios.js';
 import Modal from '../Modal.jsx';
+import { getQaScenarios, approveQaTesting } from '../../api/tspQa.api.js';
+
 
 export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBrmToAllocate, refreshTrigger }) {
   const [activeTab, setActiveTab] = useState('ALL_TASKS');
@@ -11,6 +14,30 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
   const [modalTab, setModalTab] = useState('overview');
   const [qaAssignModal, setQaAssignModal] = useState({ isOpen: false, task: null });
   const [qaMembers, setQaMembers] = useState([]);
+  const [qaScenarios, setQaScenarios] = useState([]);
+  const [loadingScenarios, setLoadingScenarios] = useState(false);
+
+  // Fetch scenarios when QA Evidence tab is clicked
+  const handleFetchScenarios = async (allocationId) => {
+    setLoadingScenarios(true);
+    try {
+      const res = await getQaScenarios(allocationId);
+      setQaScenarios(res.data.data || []);
+    } catch (err) { console.error("Failed to fetch scenarios", err); }
+    finally { setLoadingScenarios(false); }
+  };
+
+  const handleApproveQa = async (allocationId) => {
+    try {
+      await approveQaTesting(allocationId);
+      setSelectedTaskView(null);
+      setModalTab('overview');
+      fetchTasks(); // Reload everything
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to approve QA");
+    }
+  };
+
 
 
   useEffect(() => {
@@ -35,10 +62,10 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
     const now = new Date();
     
     tasksArray.forEach(t => {
-      // Dynamically override status to BREACHED if it's active and past the deadline
+      // Dynamically override status to DELAYED if it's active and past the deadline
       let computedStatus = t.status;
       if (t.status === 'ACTIVE' && t.endDate && new Date(t.endDate) < now) {
-        computedStatus = 'BREACHED';
+        computedStatus = 'DELAYED';
       }
 
       // Group by BRM ID and Task Title
@@ -70,39 +97,44 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
   };
 
     // Helper to determine the overall status for the grouped task card
-  const getGroupedStatus = (members) => {
+    const getGroupedStatus = (members) => {
+    if (members.some(m => m.status === 'QA_COMPLETED')) return 'QA COMPLETED';
     if (members.every(m => m.status === 'COMPLETED')) return 'COMPLETED';
     if (members.some(m => m.status === 'QA_TESTING')) return 'QA REVIEW';
-    if (members.some(m => m.status === 'BREACHED')) return 'BREACHED';
+    if (members.some(m => m.status === 'DELAYED')) return 'DELAYED';
     return 'ACTIVE';
   };
 
+
   // Helper to draw a beautiful colored pill badge based on status
-  const getStatusBadge = (statusStr) => {
+   const getStatusBadge = (statusStr) => {
+    if (statusStr === 'QA COMPLETED') return <span className="text-xs bg-teal-500/20 text-teal-400 px-3 py-1 rounded-full font-semibold border border-teal-500/30">QA COMPLETED</span>;
     if (statusStr === 'COMPLETED') return <span className="text-xs bg-green-500/20 text-green-400 px-3 py-1 rounded-full font-semibold border border-green-500/30">COMPLETED</span>;
     if (statusStr === 'QA REVIEW') return <span className="text-xs bg-yellow-500/20 text-yellow-400 px-3 py-1 rounded-full font-semibold border border-yellow-500/30">QA REVIEW</span>;
-    if (statusStr === 'BREACHED') return <span className="text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full font-semibold border border-red-500/30">BREACHED</span>;
+    if (statusStr === 'DELAYED') return <span className="text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full font-semibold border border-red-500/30">DELAYED</span>;
     return <span className="text-xs bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full font-semibold border border-blue-500/30">ACTIVE</span>;
   };
 
-    const handleOpenQaModal = async (task, e) => {
-    e.stopPropagation(); // Stop the row click from triggering
+
+  const handleOpenQaModal = async (task, e) => {
+    e.stopPropagation();
     setQaAssignModal({ isOpen: true, task });
     try {
-      const res = await axiosInstance.get('/brms/qa-members');
+      const res = await api.get('/brms/qa-members');
       setQaMembers(res.data.data);
     } catch (err) { console.error("Failed to fetch QA members", err); }
   };
 
-  const handleAssignToQa = async (qaMemberId) => {
+    const handleAssignToQa = async (qaMemberId) => {
     try {
-      await axiosInstance.post('/brms/allocations/assign-qa', {
-        brmId: selectedBrm.id,
+      await api.post('/brms/allocations/assign-qa', {
+        brmId: qaAssignModal.task.brmId,  // ✅ comes from the task itself
         taskTitle: qaAssignModal.task.taskTitle,
         qaMemberId
       });
+
       setQaAssignModal({ isOpen: false, task: null });
-      // Call your fetchTasks function here to reload the dashboard!
+      fetchTasks(); // Reload tasks to move task to QA tab
     } catch (err) { console.error("Failed to assign QA", err); }
   };
 
@@ -115,7 +147,7 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
   const completedTasks = groupedTasks.filter(t => t.assignedMembers.every(m => m.status === 'COMPLETED'));
   
   // For future QA integration
-  const qaTasks = groupedTasks.filter(t => t.assignedMembers.some(m => m.status === 'QA_TESTING')); 
+  const qaTasks = groupedTasks.filter(t => t.assignedMembers.some(m => m.status === 'QA_TESTING' || m.status === 'QA_COMPLETED')); 
  
 
   return (
@@ -267,14 +299,39 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
                ))
              )}
            </div>
+                 ) : activeTab === 'QA' ? (
+           <div className="space-y-4">
+             <h2 className="text-violet-400 text-lg font-semibold mb-6">QA Tasks</h2>
+             {qaTasks.length === 0 ? (
+               <p className="text-slate-400 text-sm">No tasks in QA review yet.</p>
+             ) : (
+               qaTasks.map((t, idx) => (
+                 <div
+                   key={idx}
+                   onClick={() => setSelectedTaskView(t)}
+                   className="bg-slate-800 border border-slate-700 p-4 rounded-xl flex justify-between items-center cursor-pointer hover:border-violet-500/50 hover:bg-slate-800/80 transition-all"
+                 >
+                   <div>
+                     <p className="text-white font-medium">{t.taskTitle}</p>
+                     <p className="text-slate-400 text-xs mt-1">
+                       Assigned to: {t.assignedMembers.map(m => `${m.firstName || ''} ${m.lastName || ''}`.trim()).join(', ')}
+                     </p>
+                   </div>
+                   <div className="flex items-center gap-4">
+                     {getStatusBadge(getGroupedStatus(t.assignedMembers))}
+                   </div>
+                 </div>
+               ))
+             )}
+           </div>
         ) : (
-
            <div className="text-center py-20">
              <div className="text-4xl mb-4">🧪</div>
              <p className="text-white font-semibold text-lg">QA Module Coming Soon</p>
              <p className="text-slate-400 text-sm">Tasks in QA testing stage will appear here.</p>
            </div>
         )}
+
       </div>
 
 
@@ -306,6 +363,13 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
               >
                 Task Status
               </button>
+                            <button 
+                onClick={() => { setModalTab('qa_evidence'); handleFetchScenarios(selectedTaskView.id); }}
+                className={`px-4 py-3 text-sm font-medium transition-all border-b-2 whitespace-nowrap ${modalTab === 'qa_evidence' ? 'border-brand-500 text-white' : 'border-transparent text-slate-400 hover:text-slate-300'}`}
+              >
+                QA Evidence
+              </button>
+
             </div>
 
             {/* TAB 1: OVERVIEW */}
@@ -436,6 +500,75 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
                 })}
               </div>
             )}
+                        {/* TAB 3: QA EVIDENCE */}
+            {modalTab === 'qa_evidence' && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                
+                {/* Header & Complete Button */}
+                <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+                  <div>
+                    <h3 className="text-white font-semibold">QA Verification</h3>
+                    <p className="text-slate-400 text-xs mt-1">Review the scenarios and evidence uploaded by the QA team.</p>
+                  </div>
+                  {selectedTaskView.status === 'QA_TESTING' && (
+                    <button 
+                      onClick={() => handleApproveQa(selectedTaskView.id)}
+                      className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-green-500/20 flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                      Mark QA Completed
+                    </button>
+                  )}
+                  {selectedTaskView.status === 'QA_COMPLETED' && (
+                    <span className="text-green-400 bg-green-500/20 px-4 py-2 rounded-lg font-bold text-sm border border-green-500/30">
+                      ✅ QA APPROVED
+                    </span>
+                  )}
+                </div>
+
+                {/* Scenarios List */}
+                {loadingScenarios ? (
+                  <p className="text-slate-400 text-sm text-center py-10">Loading scenarios...</p>
+                ) : qaScenarios.length === 0 ? (
+                  <div className="text-center py-12 bg-slate-900/30 border border-dashed border-slate-700 rounded-xl">
+                    <p className="text-slate-400 text-sm">No test scenarios logged by QA yet.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
+                    {qaScenarios.map(scen => (
+                      <div key={scen.id} className="bg-slate-900/60 rounded-xl p-4 border border-slate-700/50">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <span className="text-brand-400 font-mono text-xs font-bold mr-2">{scen.scenarioNo}</span>
+                            <span className="text-white font-medium">{scen.title}</span>
+                          </div>
+                        </div>
+                        <p className="text-slate-400 text-xs mt-2">{scen.description}</p>
+                        
+                        <div className="mt-3 p-2 bg-slate-800/80 border border-slate-700 rounded text-xs">
+                          <span className="text-slate-300 font-semibold block mb-0.5">Expected Result:</span>
+                          <span className="text-slate-400">{scen.expectedResult}</span>
+                        </div>
+
+                        {/* Evidences List */}
+                        {scen.qaEvidences?.length > 0 && (
+                          <div className="mt-4 pt-3 border-t border-slate-700/50 flex flex-wrap gap-2">
+                            {scen.qaEvidences.map(ev => (
+                              <a key={ev.id} href={`http://localhost:3000${ev.fileUrl}`} target="_blank" rel="noreferrer"
+                                 className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 px-3 py-1.5 rounded-lg transition-colors group">
+                                <span>{ev.fileType === 'SCREENSHOT' ? '🖼️' : '📄'}</span>
+                                <span className="text-xs text-slate-300 group-hover:text-white truncate max-w-[150px]">{ev.fileName}</span>
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
 
           </div>
         </Modal>

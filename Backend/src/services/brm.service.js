@@ -271,7 +271,10 @@ export const getBrmById = async (brmId) => {
         include: {
           tspMember: {
             include: { user: { select: { firstName: true, lastName: true, email: true } } }
-          }
+          },
+          milestones: { orderBy: { createdAt: "asc" } },
+         progressLogs: { orderBy: { createdAt: "desc" } }
+
         }
       },
 
@@ -331,6 +334,19 @@ export const listBrms = async ({ userId, roles, status, priority, page = 1, limi
     };
   }
 
+    // TSP QA members only see BRMs that have tasks assigned to them for QA
+  const isOnlyTspQa = roles.includes("TSP_QA") &&
+    !roles.includes("PRODUCT_LEAD") &&
+    !roles.includes("HEAD_FUNCTIONAL") &&
+    !roles.includes("HEAD_TECHNOLOGY") &&
+    !roles.includes("SUPER_ADMIN");
+  if (isOnlyTspQa) {
+    where.taskAllocations = {
+      some: { qaMemberId: userId, status: 'QA_TESTING' }
+    };
+  }
+
+  
   const [brms, total] = await Promise.all([
     prisma.brm.findMany({
       where,
@@ -824,3 +840,80 @@ export const assignTaskToQa = async (brmId, taskTitle, qaMemberId) => {
     data: { status: 'QA_TESTING', qaMemberId }
   });
 };
+
+// Get all QA task allocations for a logged-in QA member
+export const getMyQaTasks = async (userId) => {
+  return await prisma.taskAllocation.findMany({
+    where: { qaMemberId: userId, status: 'QA_TESTING' },
+    include: {
+      brm: { select: { id: true, brmNumber: true, title: true, TeamName: true, currentStatus: true, priority: true, Category: true, createdAt: true } },
+      assignedBy: { select: { firstName: true, lastName: true } },
+      tspMember: { include: { user: { select: { firstName: true, lastName: true } } } },
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+};
+
+// Add a new QA Test Scenario
+export const addQaTestScenario = async (allocationId, userId, data) => {
+  const allocation = await prisma.taskAllocation.findUnique({ where: { id: allocationId } });
+  if (!allocation) throw new ApiError(404, "Allocation not found");
+  if (allocation.qaMemberId !== userId) throw new ApiError(403, "You are not assigned as QA for this task");
+
+  return await prisma.qaTestScenario.create({
+    data: {
+      allocationId,
+      scenarioNo: data.scenarioNo,
+      title: data.title,
+      description: data.description,
+      expectedResult: data.expectedResult,
+      createdById: userId
+    }
+  });
+};
+
+// Fetch Scenarios with Evidence
+export const getQaScenarios = async (allocationId) => {
+  return await prisma.qaTestScenario.findMany({
+    where: { allocationId },
+    include: {
+      qaEvidences: { orderBy: { uploadedAt: 'desc' }, include: { uploadedBy: { select: { firstName: true, lastName: true } } } },
+      createdBy: { select: { firstName: true, lastName: true } }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+};
+
+// Upload QA Evidence
+export const addQaEvidence = async (scenarioId, file, userId) => {
+  const scenario = await prisma.qaTestScenario.findUnique({ where: { id: scenarioId } });
+  if (!scenario) throw new ApiError(404, "Scenario not found");
+
+  const fileUrl = `/uploads/qa-evidence/${file.filename}`;
+  const fileType = file.mimetype.includes('image') ? 'SCREENSHOT' : 'DOCUMENT';
+
+  return await prisma.qaEvidence.create({
+    data: {
+      scenarioId,
+      fileName: file.originalname,
+      fileUrl,
+      fileType,
+      uploadedById: userId
+    }
+  });
+};
+
+
+// TL Approves QA Testing
+export const approveQaTesting = async (allocationId, userId) => {
+  const allocation = await prisma.taskAllocation.findUnique({ where: { id: allocationId } });
+  if (!allocation) throw new ApiError(404, "Allocation not found");
+  if (allocation.assignedById !== userId) throw new ApiError(403, "Only the assigning TL can approve this QA");
+
+  return await prisma.taskAllocation.updateMany({
+    where: { brmId: allocation.brmId, taskTitle: allocation.taskTitle },
+    data: { status: 'QA_COMPLETED' }
+  });
+};
+
+

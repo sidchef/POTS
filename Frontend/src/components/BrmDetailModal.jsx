@@ -1,8 +1,24 @@
-import React from 'react';
+import React,{useState} from 'react';
 import Modal from './Modal';
 import { BrmStatusBadge, PriorityBadge } from './BrmStatusBadge';
+import { getQaScenarios } from '../api/tspQa.api.js';
 
 export default function BrmDetailModal({ target, onClose }) {
+  const [selectedTaskView, setSelectedTaskView] = useState(null);
+  const [taskModalTab, setTaskModalTab] = useState('overview');
+  const [qaScenarios, setQaScenarios] = useState([]);
+  const [loadingScenarios, setLoadingScenarios] = useState(false);
+  const handleFetchScenarios = async (allocationId) => {
+    setLoadingScenarios(true);
+    try {
+      const res = await getQaScenarios(allocationId);
+      setQaScenarios(res.data.data || []);
+    } catch (err) {
+      console.error("Failed to fetch scenarios", err);
+    } finally {
+      setLoadingScenarios(false);
+    }
+  };
   if (!target) return null;
 
   return (
@@ -164,32 +180,41 @@ export default function BrmDetailModal({ target, onClose }) {
           )}
           {/* 5.5 Task Allocations */}
           {target.taskAllocations?.length > 0 && (() => {
-            // Group the tasks by title and compute BREACHED status
+            // Group the tasks by title and compute DELAYED status
             const groups = {};
             const now = new Date();
             
             target.taskAllocations.forEach(alloc => {
               let computedStatus = alloc.status;
               if (alloc.status === 'ACTIVE' && alloc.endDate && new Date(alloc.endDate) < now) {
-                computedStatus = 'BREACHED';
+                computedStatus = 'DELAYED';
               }
               const key = alloc.taskTitle;
-              if (!groups[key]) {
+                            if (!groups[key]) {
                 groups[key] = {
                   ...alloc,
                   assignedMembers: [{
                     firstName: alloc.tspMember?.user?.firstName,
                     lastName: alloc.tspMember?.user?.lastName,
-                    status: computedStatus
+                    status: computedStatus,
+                    skill: alloc.skill,
+                    progressLogs: alloc.progressLogs || [],
+                    milestones: alloc.milestones || [],
+                    id: alloc.id
                   }]
                 };
               } else {
                 groups[key].assignedMembers.push({
                   firstName: alloc.tspMember?.user?.firstName,
                   lastName: alloc.tspMember?.user?.lastName,
-                  status: computedStatus
+                  status: computedStatus,
+                  skill: alloc.skill,
+                  progressLogs: alloc.progressLogs || [],
+                  milestones: alloc.milestones || [],
+                  id: alloc.id
                 });
               }
+
             });
 
             const groupedAllocations = Object.values(groups);
@@ -201,23 +226,33 @@ export default function BrmDetailModal({ target, onClose }) {
                   {groupedAllocations.map(alloc => {
                     // Compute overall status for the grouped task
                     let overallStatus = 'ACTIVE';
-                    if (alloc.assignedMembers.every(m => m.status === 'COMPLETED')) overallStatus = 'COMPLETED';
-                    else if (alloc.assignedMembers.some(m => m.status === 'BREACHED')) overallStatus = 'BREACHED';
+                    if (alloc.assignedMembers.some(m => m.status === 'QA_COMPLETED')) overallStatus = 'QA COMPLETED';
+                    else if (alloc.assignedMembers.every(m => m.status === 'COMPLETED')) overallStatus = 'COMPLETED';
+                    else if (alloc.assignedMembers.some(m => m.status === 'QA_TESTING')) overallStatus = 'QA REVIEW';
+                    else if (alloc.assignedMembers.some(m => m.status === 'DELAYED')) overallStatus = 'DELAYED';
 
-                    return (
-                      <div key={alloc.taskTitle} className="p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+                     return (
+                      <div 
+                        key={alloc.taskTitle} 
+                        onClick={() => { setSelectedTaskView(alloc); setTaskModalTab('overview'); }}
+                        className="p-3 bg-slate-900/50 rounded-lg border border-slate-700 cursor-pointer hover:border-brand-500/50 transition-all"
+                      >
+
                         <div className="flex justify-between items-start mb-2">
                           <div>
                             <h5 className="text-white text-sm font-medium">{alloc.taskTitle}</h5>
                             {alloc.taskDescription && <p className="text-slate-400 text-xs mt-1">{alloc.taskDescription}</p>}
                           </div>
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            overallStatus === 'QA COMPLETED' ? 'bg-teal-500/20 text-teal-400 border border-teal-500/30' :
                             overallStatus === 'COMPLETED' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                            overallStatus === 'BREACHED' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 
+                            overallStatus === 'QA REVIEW' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                            overallStatus === 'DELAYED' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 
                             'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                           }`}>
                             {overallStatus}
                           </span>
+
                         </div>
                         <div className="flex flex-wrap gap-2 text-xs">
                           <span className="text-purple-400 font-medium px-2 py-1 bg-purple-500/10 rounded border border-purple-500/20">
@@ -269,6 +304,210 @@ export default function BrmDetailModal({ target, onClose }) {
 
         </div>
       )}
+
+                {/* Sub-Modal for Task Details (No QA Completed Button!) */}
+          {selectedTaskView && (
+            <Modal 
+              title={selectedTaskView.brm?.brmNumber || 'Task Details'} 
+              onClose={() => { setSelectedTaskView(null); setTaskModalTab('overview'); }} 
+              wide
+            >
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-white">{selectedTaskView.taskTitle}</h2>
+                </div>
+
+                {/* TAB NAVIGATION */}
+                <div className="flex space-x-1 border-b border-slate-700/50 overflow-x-auto">
+                  <button 
+                    onClick={() => setTaskModalTab('overview')}
+                    className={`px-4 py-3 text-sm font-medium transition-all border-b-2 whitespace-nowrap ${taskModalTab === 'overview' ? 'border-brand-500 text-white' : 'border-transparent text-slate-400 hover:text-slate-300'}`}
+                  >
+                    Overview
+                  </button>
+                  <button 
+                    onClick={() => setTaskModalTab('status')}
+                    className={`px-4 py-3 text-sm font-medium transition-all border-b-2 whitespace-nowrap ${taskModalTab === 'status' ? 'border-brand-500 text-white' : 'border-transparent text-slate-400 hover:text-slate-300'}`}
+                  >
+                    Task Status
+                  </button>
+                  <button 
+                    onClick={() => { setTaskModalTab('qa_evidence'); handleFetchScenarios(selectedTaskView.id); }}
+                    className={`px-4 py-3 text-sm font-medium transition-all border-b-2 whitespace-nowrap ${taskModalTab === 'qa_evidence' ? 'border-brand-500 text-white' : 'border-transparent text-slate-400 hover:text-slate-300'}`}
+                  >
+                    QA Evidence
+                  </button>
+                </div>
+
+                {/* TAB 1: OVERVIEW */}
+                {taskModalTab === 'overview' && (
+                  <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50 space-y-4">
+                    <div>
+                      <p className="text-xs text-slate-500 uppercase font-semibold">Description</p>
+                      <p className="text-slate-300 text-sm mt-1 leading-relaxed">
+                        {selectedTaskView.taskDescription || 'No description provided.'}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mt-4">
+                      <div className="bg-slate-800 border border-slate-700 p-3 rounded-xl">
+                        <p className="text-slate-500 text-xs mb-1">Start Date</p>
+                        <p className="text-white font-semibold text-sm">
+                          {selectedTaskView.startDate ? new Date(selectedTaskView.startDate).toISOString().split('T')[0] : 'N/A'}
+                        </p>
+                      </div>
+                      <div className="bg-slate-800 border border-slate-700 p-3 rounded-xl">
+                        <p className="text-slate-500 text-xs mb-1">Due Date</p>
+                        <p className="text-white font-semibold text-sm">
+                          {selectedTaskView.endDate ? new Date(selectedTaskView.endDate).toISOString().split('T')[0] : 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-700/50 space-y-4">
+                      <h3 className="text-slate-400 font-semibold uppercase tracking-wider text-sm">Assigned Developers</h3>
+                      <div className="space-y-3">
+                        {selectedTaskView.assignedMembers?.map((m, idx) => (
+                          <div key={idx} className="bg-slate-900/80 p-3 rounded-xl border border-slate-700 flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <div className="w-10 h-10 rounded-full bg-emerald-900/40 border border-emerald-700 flex items-center justify-center text-emerald-400 font-bold">
+                                {m.firstName?.[0]}{m.lastName?.[0] || ''}
+                              </div>
+                              <div>
+                                <p className="text-white font-medium text-sm">{m.firstName} {m.lastName}</p>
+                                <p className="text-slate-400 text-xs mt-0.5">Assigned Skill • {m.skill}</p> 
+                              </div>
+                            </div>
+                            <span className="px-3 py-1 bg-emerald-900/30 border border-emerald-800 rounded-full text-emerald-400 text-xs">
+                              Developer
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: TASK STATUS */}
+                {taskModalTab === 'status' && (
+                  <div className="space-y-4">
+                    {selectedTaskView.assignedMembers?.map((m, idx) => {
+                      const latestProgress = m.progressLogs?.[0]?.progressPct || 0;
+                      const latestRemark = m.progressLogs?.[0]?.remarks || 'No progress logged yet.';
+                      return (
+                        <div key={idx} className="bg-slate-900/50 p-4 rounded-xl border border-slate-700 space-y-4">
+                          <div>
+                            <div className="flex justify-between items-center mb-2">
+                              <p className="text-white font-medium text-sm">{m.firstName} {m.lastName} <span className="text-slate-500 text-xs ml-1 font-normal">({m.skill})</span></p>
+                              <span className="text-brand-400 font-bold text-sm">{latestProgress}%</span>
+                            </div>
+                            <div className="w-full bg-slate-800 rounded-full h-2">
+                              <div className="bg-brand-500 h-2 rounded-full transition-all duration-1000" style={{ width: `${latestProgress}%` }}></div>
+                            </div>
+                            <p className="text-slate-400 text-xs mt-2 italic flex items-center gap-1">
+                              <span className="text-brand-500">↳</span> "{latestRemark}"
+                            </p>
+                          </div>
+
+                          {m.milestones?.length > 0 && (
+                            <div className="pt-3 border-t border-slate-700/50">
+                              <p className="text-xs text-slate-500 uppercase font-semibold mb-3">Milestones</p>
+                              <div className="space-y-2.5">
+                                {m.milestones.map(ms => (
+                                  <div key={ms.id} className="flex items-start space-x-3">
+                                    <div className="mt-0.5">
+                                      {ms.status === 'COMPLETED' ? (
+                                        <div className="w-4 h-4 rounded-full bg-green-500/20 flex items-center justify-center">
+                                          <svg className="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>
+                                        </div>
+                                      ) : (
+                                        <div className="w-4 h-4 rounded-full border-2 border-slate-600"></div>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <p className={`text-sm ${ms.status === 'COMPLETED' ? 'text-slate-400 line-through' : 'text-white font-medium'}`}>{ms.title}</p>
+                                      {ms.dueDate && <p className="text-[10px] text-slate-500 mt-0.5">Due: {new Date(ms.dueDate).toLocaleDateString()}</p>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* TAB 3: QA EVIDENCE */}
+                {taskModalTab === 'qa_evidence' && (
+                  <div className="space-y-4">
+                    <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+                      <h3 className="text-white font-semibold">QA Verification</h3>
+                      <p className="text-slate-400 text-xs mt-1">Review the scenarios and evidence uploaded by the QA team.</p>
+                    </div>
+
+                    {loadingScenarios ? (
+                      <div className="text-center py-8 text-slate-400 text-sm animate-pulse">Loading test scenarios...</div>
+                    ) : qaScenarios.length === 0 ? (
+                      <div className="text-center py-8 bg-slate-900/30 rounded-xl border border-slate-800 text-slate-500 text-sm">
+                        No test scenarios or evidence logged yet for this task.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {qaScenarios.map((sc, index) => (
+                          <div key={sc.id} className="bg-slate-900/70 p-4 rounded-xl border border-slate-700 space-y-3">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-start space-x-3">
+                                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 text-slate-400 text-xs font-bold flex items-center justify-center border border-slate-700">
+                                  #{index + 1}
+                                </span>
+                                <div>
+                                  <p className="text-white font-medium text-sm">{sc.scenarioTitle}</p>
+                                  {sc.expectedResult && <p className="text-slate-400 text-xs mt-1"><span className="text-slate-500 font-semibold">Expected:</span> {sc.expectedResult}</p>}
+                                </div>
+                              </div>
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                                sc.status === 'PASSED' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                                sc.status === 'FAILED' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                                'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                              }`}>
+                                {sc.status}
+                              </span>
+                            </div>
+                            {sc.actualResult && (
+                              <div className="bg-slate-950/50 p-2.5 rounded-lg border border-slate-800/80 text-xs text-slate-300">
+                                <span className="text-slate-500 font-semibold block mb-0.5">Actual Result:</span>
+                                {sc.actualResult}
+                              </div>
+                            )}
+                            {sc.evidenceDocs?.length > 0 && (
+                              <div className="pt-2 border-t border-slate-800 flex flex-wrap gap-2 items-center">
+                                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Evidence:</span>
+                                {sc.evidenceDocs.map(doc => (
+                                  <a 
+                                    key={doc.id}
+                                    href={`${import.meta.env.VITE_API_URL.replace('/api','')}${doc.fileUrl}`} 
+                                    target="_blank" 
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 border border-violet-500/30 text-xs font-medium transition-colors"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                    View Attachment
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Modal>
+          )}
+
     </Modal>
   );
 }

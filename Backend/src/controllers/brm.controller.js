@@ -210,6 +210,42 @@ export const assignTaskToQa = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+export const getMyQaTasks = async (req, res, next) => {
+  try {
+    const data = await brmService.getMyQaTasks(req.user.id);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+};
 
+
+export const addQaTestScenario = async (req, res, next) => {
+  try {
+    const data = await brmService.addQaTestScenario(req.params.allocationId, req.user.id, req.body);
+    res.status(201).json({ success: true, data, message: "Scenario added successfully" });
+  } catch (err) { next(err); }
+};
+
+export const getQaScenarios = async (req, res, next) => {
+  try {
+    const data = await brmService.getQaScenarios(req.params.allocationId);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+};
+
+export const addQaEvidence = async (req, res, next) => {
+  try {
+    if (!req.file) throw new ApiError(400, "Evidence file is required");
+    const data = await brmService.addQaEvidence(req.params.scenarioId, req.file, req.user.id);
+    res.status(201).json({ success: true, data, message: "Evidence uploaded successfully" });
+  } catch (err) { next(err); }
+};
+
+
+export const approveQaTesting = async (req, res, next) => {
+  try {
+    const data = await brmService.approveQaTesting(req.params.allocationId, req.user.id);
+    res.status(200).json({ success: true, data, message: "Task marked as QA Completed" });
+  } catch (err) { next(err); }
+};
 
 

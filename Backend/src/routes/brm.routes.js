@@ -4,10 +4,11 @@ import {
   createBrm, updateBrm, submitBrm, getBrmById,
   listBrms, approveBrm, rejectBrm, getMyPendingApprovals,
   assignBrmToTm, submitUserStories, assignBrmToTspTl, submitArchitecture, approveArchitecture,addTechnologyRequirement, finalizeTechnologyRequirements,
-  allocateTask,getBrmAllocations,completeAllocation , getMyAssignedTasks, getQaMembers, assignTaskToQa// ⬅️ Added new functions here
+  allocateTask,getBrmAllocations,completeAllocation , getMyAssignedTasks, getQaMembers, assignTaskToQa, getMyQaTasks,
+  addQaTestScenario, getQaScenarios, addQaEvidence,approveQaTesting// Added new functions here
 } from "../controllers/brm.controller.js";
 import prisma from "../config/prisma.js";
-import { uploadArchitecture } from "../middleware/upload.middleware.js";
+import { uploadArchitecture, uploadEvidence } from "../middleware/upload.middleware.js";
 
 
 
@@ -38,6 +39,12 @@ router.get("/allocations/assigned-by-me", authorize("SUBMIT_ARCHITECTURE"), getM
 
 router.get("/my-pending-approvals", authorize("COMMITTEE_REVIEW"), getMyPendingApprovals);
 router.get("/", authorize("BRM_DASHBOARD"), listBrms);
+//QA Allocation
+router.get("/qa-members", getQaMembers);
+router.post("/allocations/assign-qa", assignTaskToQa);
+router.get("/qa/my-tasks", getMyQaTasks);
+
+
 router.get("/:id", authorize("BRM_DETAILS"), getBrmById);
 
 // Approval routes — HF and HT only
@@ -63,9 +70,19 @@ router.post("/:id/allocate-task", authenticate, authorize("SUBMIT_ARCHITECTURE")
 router.get("/:id/allocations", authenticate, getBrmAllocations);
 router.patch("/:id/allocations/:allocationId/complete", authenticate, authorize("SUBMIT_ARCHITECTURE"), completeAllocation);
 
-//QA Allocation
-router.get("/qa-members", authenticate, authorize("SUBMIT_ARCHITECTURE"), getQaMembers);
-router.post("/allocations/assign-qa", authenticate, authorize("SUBMIT_ARCHITECTURE"), assignTaskToQa);
+// QA Test Scenarios & Evidence
+router.post("/allocations/:allocationId/qa-scenarios", authenticate, addQaTestScenario);
+router.get("/allocations/:allocationId/qa-scenarios", authenticate, getQaScenarios);
+router.post("/qa-scenarios/:scenarioId/evidence", authenticate, uploadEvidence.single('document'), addQaEvidence);
+
+
+// TL Approves QA
+router.patch("/allocations/:allocationId/qa-complete", authenticate, authorize("SUBMIT_ARCHITECTURE"), approveQaTesting);
+
+
+
+
+
 
 
 

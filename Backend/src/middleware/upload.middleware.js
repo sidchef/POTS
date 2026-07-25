@@ -32,3 +32,24 @@ export const uploadArchitecture = multer({
   fileFilter,
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
+
+const qaEvidenceDir = 'uploads/qa-evidence';
+if (!fs.existsSync(qaEvidenceDir)) {
+  fs.mkdirSync(qaEvidenceDir, { recursive: true });
+}
+
+const evidenceStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, qaEvidenceDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'evidence-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+export const uploadEvidence = multer({
+  storage: evidenceStorage,
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }
+});
