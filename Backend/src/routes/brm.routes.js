@@ -5,10 +5,10 @@ import {
   listBrms, approveBrm, rejectBrm, getMyPendingApprovals,
   assignBrmToTm, submitUserStories, assignBrmToTspTl, submitArchitecture, approveArchitecture,addTechnologyRequirement, finalizeTechnologyRequirements,
   allocateTask,getBrmAllocations,completeAllocation , getMyAssignedTasks, getQaMembers, assignTaskToQa, getMyQaTasks,
-  addQaTestScenario, getQaScenarios, addQaEvidence,approveQaTesting// Added new functions here
+  addQaTestScenario, getQaScenarios, addQaEvidence,approveQaTesting, getSecMembers, assignBrmToSecurity,addSecurityFinding, uploadSecurityReportController// Added new functions here
 } from "../controllers/brm.controller.js";
 import prisma from "../config/prisma.js";
-import { uploadArchitecture, uploadEvidence } from "../middleware/upload.middleware.js";
+import { uploadArchitecture, uploadEvidence,uploadSecurityReport } from "../middleware/upload.middleware.js";
 
 
 
@@ -41,6 +41,8 @@ router.get("/my-pending-approvals", authorize("COMMITTEE_REVIEW"), getMyPendingA
 router.get("/", authorize("BRM_DASHBOARD"), listBrms);
 //QA Allocation
 router.get("/qa-members", getQaMembers);
+router.get("/sec-members", authenticate, authorize("SUBMIT_ARCHITECTURE"), getSecMembers);
+
 router.post("/allocations/assign-qa", assignTaskToQa);
 router.get("/qa/my-tasks", getMyQaTasks);
 
@@ -78,6 +80,12 @@ router.post("/qa-scenarios/:scenarioId/evidence", authenticate, uploadEvidence.s
 
 // TL Approves QA
 router.patch("/allocations/:allocationId/qa-complete", authenticate, authorize("SUBMIT_ARCHITECTURE"), approveQaTesting);
+
+//TL assign security scan
+router.post("/:id/assign-security", authenticate, authorize("SUBMIT_ARCHITECTURE"), assignBrmToSecurity);
+router.post("/:id/security-findings", authenticate, addSecurityFinding);
+router.post("/:id/security-report", authenticate, uploadSecurityReport.single('document'), uploadSecurityReportController);
+
 
 
 

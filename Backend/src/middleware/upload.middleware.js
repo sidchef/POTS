@@ -51,5 +51,26 @@ const evidenceStorage = multer.diskStorage({
 export const uploadEvidence = multer({
   storage: evidenceStorage,
   fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }
+  limits: { fileSize: 10 * 1024 * 1024 } //10 MB 
+});
+
+
+const secReportDir = 'uploads/security-reports';
+if (!fs.existsSync(secReportDir)) {
+  fs.mkdirSync(secReportDir, { recursive: true });
+}
+
+const secStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, secReportDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'sec-report-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+export const uploadSecurityReport = multer({
+  storage: secStorage,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });

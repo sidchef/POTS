@@ -54,7 +54,7 @@ export default function TspQaDashboard() {
   useEffect(() => {
     fetchBrms();
     fetchQaTasks();
-    const interval = setInterval(() => { fetchBrms(); fetchQaTasks(); }, 10000);
+    const interval = setInterval(() => { fetchBrms(); fetchQaTasks(); }, 60000);
     return () => clearInterval(interval);
   }, []);
 

@@ -2,7 +2,7 @@ import * as brmService from "../services/brm.service.js";
 import * as approvalService from "../services/approval.service.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import ApiError from "../utils/ApiError.js";
-
+import { addSecurityFindingService, uploadSecurityReportService } from "../services/brm.service.js";
 
 
 // POST /api/brms
@@ -248,4 +248,40 @@ export const approveQaTesting = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+export const getSecMembers = async (req, res, next) => {
+  try {
+    const data = await brmService.getSecMembers();
+    res.status(200).json({ status: "success", data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const assignBrmToSecurity = async (req, res, next) => {
+  try {
+    const data = await brmService.assignBrmToSecurity(req.params.id, req.body.secMemberId);
+    res.status(200).json({ status: "success", data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+export const addSecurityFinding = async (req, res, next) => {
+  try {
+    const finding = await addSecurityFindingService(req.params.id, req.body, req.user.id);
+    res.status(201).json({ success: true, data: finding });
+  } catch (error) {
+    next(error);
+  }
+};
+export const uploadSecurityReportController = async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No document file provided" });
+    const result = await uploadSecurityReportService(req.params.id, req.file, req.user.id);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
 

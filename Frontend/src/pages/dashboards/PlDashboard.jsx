@@ -108,7 +108,7 @@ export default function PlDashboard() {
     fetchBrms(true); 
     
     // Background auto-refresh every 10 seconds (no spinner)
-    const interval = setInterval(() => fetchBrms(false), 10000);
+    const interval = setInterval(() => fetchBrms(false), 60000);
     
     // Instantly refresh when the user switches back to this browser tab (no spinner)
     const onFocus = () => fetchBrms(false);

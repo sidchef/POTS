@@ -11,6 +11,8 @@ import TmDashboard from './pages/dashboards/TmDashboard';
 import TspTlDashboard from './pages/dashboards/TspTlDashboard';
 import TspTmDashboard from './pages/dashboards/TspTmDashboard';
 import TspQaDashboard from './pages/dashboards/TspQaDashboard';
+import TspSecDashboard from './pages/dashboards/TspSecDashboard';
+
 
 import { ThemeProvider } from './context/ThemeContext';
 
@@ -21,7 +23,6 @@ import { ThemeProvider } from './context/ThemeContext';
 
 // Each role can ONLY access their own dashboard path
 const roleRoutes = [
-  { path: '/security', roles: ['TSP_SECURITY'] },
   { path: '/bt',       roles: ['BUSINESS_TEAM'] },
 ];
 
@@ -78,6 +79,12 @@ export default function App() {
               <TspQaDashboard />
             </ProtectedRoute>
           } />
+          <Route path="/security" element={
+            <ProtectedRoute allowedRoles={['TSP_SECURITY']}>
+              <TspSecDashboard />
+            </ProtectedRoute>
+          } />
+
 
 
 

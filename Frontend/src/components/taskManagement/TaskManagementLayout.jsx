@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getMyAssignedTasks } from '../../api/brm.api.js';
+import { getMyAssignedTasks, completeAllocation } from '../../api/brm.api.js';
 import api from '../../api/axios.js';
 import Modal from '../Modal.jsx';
 import { getQaScenarios, approveQaTesting } from '../../api/tspQa.api.js';
@@ -37,6 +37,19 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
       alert(err.response?.data?.message || "Failed to approve QA");
     }
   };
+
+    const handleMarkCompleted = async (task) => {
+    try {
+      const brmId = task.brmId || task.brm?.id;
+      await completeAllocation(brmId, task.id);
+      setSelectedTaskView(null);
+      setModalTab('overview');
+      fetchTasks();
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to mark task as completed");
+    }
+  };
+
 
 
 
@@ -190,7 +203,7 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
                 brmsNeedingAllocation.map(brm => (
                   <div key={brm.id} onClick={() => { setSelectedBrm(brm); setActiveTab('BRM_TASKS'); }}
                     className={`cursor-pointer hover:bg-slate-800 border p-3 rounded-xl transition-all ${
-                      selectedBrm?.id === brm.id ? 'bg-slate-800 border-slate-600' : 'bg-slate-800/50 border-slate-700/50'
+                       selectedBrm?.id === brm.id ? 'bg-brand-500/20 border-brand-500 shadow-lg shadow-brand-500/10 ring-1 ring-brand-500/50' : 'bg-slate-800/50 border-slate-700/50 hover:border-slate-600'
                     }`}>
                     <p className="text-slate-300 font-medium text-sm truncate">{brm.title}</p>
                     <div className="flex items-center justify-between mt-2">
@@ -447,6 +460,32 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
             {/* TAB 2: TASK STATUS (Progress & Milestones) */}
             {modalTab === 'status' && (
               <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+               {/* Header & Mark Complete Button */}
+                <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+                  <div>
+                    <h3 className="text-white font-semibold">Development Status</h3>
+                    <p className="text-slate-400 text-xs mt-1">Monitor developer progress and milestone completions.</p>
+                  </div>
+                  {getGroupedStatus(selectedTaskView.assignedMembers) !== 'COMPLETED' && 
+                   getGroupedStatus(selectedTaskView.assignedMembers) !== 'QA COMPLETED' && 
+                   getGroupedStatus(selectedTaskView.assignedMembers) !== 'QA REVIEW' && (
+                    <button 
+                      onClick={() => handleMarkCompleted(selectedTaskView)}
+                      className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-lg shadow-green-500/20 flex items-center gap-2 shrink-0"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                      Mark Task Completed
+                    </button>
+                  )}
+                  {(getGroupedStatus(selectedTaskView.assignedMembers) === 'COMPLETED' || 
+                    getGroupedStatus(selectedTaskView.assignedMembers) === 'QA COMPLETED' || 
+                    getGroupedStatus(selectedTaskView.assignedMembers) === 'QA REVIEW') && (
+                    <span className="text-green-400 bg-green-500/20 px-4 py-2 rounded-lg font-bold text-sm border border-green-500/30 shrink-0">
+                      ✅ {getGroupedStatus(selectedTaskView.assignedMembers)}
+                    </span>
+                  )}
+                </div>
+                
                 {selectedTaskView.assignedMembers.map((m, idx) => {
                   const latestProgress = m.progressLogs?.[0]?.progressPct || 0;
                   const latestRemark = m.progressLogs?.[0]?.remarks || 'No progress logged yet.';

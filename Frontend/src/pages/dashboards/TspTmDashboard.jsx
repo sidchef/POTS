@@ -58,7 +58,7 @@ export default function TspTmDashboard() {
     const interval = setInterval(() => {
       fetchAllBrms(false);
       fetchAllocations(false);
-    }, 10000);
+    }, 60000);
     const onFocus = () => { fetchAllBrms(false); fetchAllocations(false); };
     window.addEventListener('focus', onFocus);
     return () => { clearInterval(interval); window.removeEventListener('focus', onFocus); };

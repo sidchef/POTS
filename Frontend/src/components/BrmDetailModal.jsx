@@ -1,13 +1,25 @@
-import React,{useState} from 'react';
+import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
 import { BrmStatusBadge, PriorityBadge } from './BrmStatusBadge';
 import { getQaScenarios } from '../api/tspQa.api.js';
+import api from '../api/axios.js';
 
-export default function BrmDetailModal({ target, onClose }) {
+export default function BrmDetailModal({ target: initialTarget, onClose }) {
+  const [target, setTarget] = useState(initialTarget);
   const [selectedTaskView, setSelectedTaskView] = useState(null);
   const [taskModalTab, setTaskModalTab] = useState('overview');
   const [qaScenarios, setQaScenarios] = useState([]);
   const [loadingScenarios, setLoadingScenarios] = useState(false);
+
+  // Automatically fetch complete BRM details (User Stories, full Task Allocations, dates, names)
+  useEffect(() => {
+    if (initialTarget?.id) {
+      api.get(`/brms/${initialTarget.id}`)
+        .then(res => setTarget(res.data.data))
+        .catch(err => console.error("Failed to fetch full BRM details:", err));
+    }
+  }, [initialTarget?.id]);
+
   const handleFetchScenarios = async (allocationId) => {
     setLoadingScenarios(true);
     try {

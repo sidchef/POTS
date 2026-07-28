@@ -8,6 +8,8 @@ import { getTspMembersBySkill } from '../../api/tspProfile.api.js';
 import Modal from '../../components/Modal.jsx';
 import { TECH_SKILLS } from '../../constants/skills.js';
 import TaskManagementLayout from '../../components/taskManagement/TaskManagementLayout.jsx';
+import SecurityManagementLayout from '../../components/securityManagement/SecurityManagementLayout.jsx';
+
 
 
 
@@ -107,7 +109,7 @@ export default function TspTlDashboard() {
       fetchTechBrms();
       fetchAllocBrms();
 
-    }, 10000);
+    }, 60000);
     
     const onFocus = () => {
       fetchAssignedBrms(false);
@@ -356,7 +358,7 @@ export default function TspTlDashboard() {
           </button>
 
 
-                    <button
+          <button
             onClick={() => setActiveTab('allocation')}
             className={`pb-4 text-sm font-medium transition-colors relative flex items-center gap-2 ${
               activeTab === 'allocation' ? 'text-brand-400' : 'text-slate-400 hover:text-slate-300'
@@ -374,6 +376,19 @@ export default function TspTlDashboard() {
               <span className="absolute bottom-0 left-0 w-full h-0.5 bg-green-500 rounded-t-full shadow-[0_-2px_8px_rgba(34,197,94,0.5)]"></span>
             )}
           </button>
+
+         <button
+            onClick={() => setActiveTab('security')}
+            className={`pb-4 text-sm font-medium transition-colors relative flex items-center gap-2 ${
+              activeTab === 'security' ? 'text-brand-400' : 'text-slate-400 hover:text-slate-300'
+            }`}
+          >
+            Security Management
+            {activeTab === 'security' && (
+              <span className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-500 rounded-t-full shadow-[0_-2px_8px_rgba(99,102,241,0.5)]"></span>
+            )}
+          </button>
+
 
 
         </div>
@@ -508,6 +523,12 @@ export default function TspTlDashboard() {
              refreshTrigger={taskRefreshTrigger} 
           />
         )}
+
+        {/* ─── SECURITY MANAGEMENT TAB ─────────────────────────────── */}
+        {activeTab === 'security' && (
+          <SecurityManagementLayout brms={allBrms} onRefresh={() => fetchAllBrms(false)}/>
+        )}
+
 
         {/* ─── TASK ALLOCATION MODAL ───────────────────────────────── */}
         {allocTarget && (

@@ -100,7 +100,7 @@ export default function TmDashboard() {
     const interval = setInterval(() => {
       fetchMyBrms(false);
       fetchAllBrms(false);
-    }, 10000);
+    }, 60000);
     
     const onFocus = () => {
       fetchMyBrms(false);

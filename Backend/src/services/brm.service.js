@@ -346,6 +346,24 @@ export const listBrms = async ({ userId, roles, status, priority, page = 1, limi
     };
   }
 
+      // TSP Security members only see BRMs that have security scans assigned to them
+  const isOnlyTspSec = roles.includes("TSP_SECURITY") &&
+    !roles.includes("PRODUCT_LEAD") &&
+    !roles.includes("HEAD_FUNCTIONAL") &&
+    !roles.includes("HEAD_TECHNOLOGY") &&
+    !roles.includes("SUPER_ADMIN");
+    if (isOnlyTspSec) {
+    const myScans = await prisma.securityScan.findMany({
+      where: { assignedSecId: userId },
+      select: { brmId: true }
+    });
+    const scanBrmIds = myScans.map(s => s.brmId).filter(Boolean);
+
+    where.id = { in: scanBrmIds };
+  }
+
+
+
   
   const [brms, total] = await Promise.all([
     prisma.brm.findMany({
@@ -355,6 +373,9 @@ export const listBrms = async ({ userId, roles, status, priority, page = 1, limi
       orderBy: { createdAt: "desc" },
       include: {
         currentPl: { select: { firstName: true, lastName: true, employeeId: true } },
+        taskAllocations: { select: { id: true, status: true, taskTitle: true } },
+        securityScans: true,
+        securityFindings: true
       },
     }),
     prisma.brm.count({ where }),
@@ -790,8 +811,8 @@ export const completeAllocation = async (allocationId) => {
   const allocation = await prisma.taskAllocation.findUnique({ where: { id: allocationId } });
   if (!allocation) throw new ApiError(404, "Allocation not found");
 
-  return prisma.taskAllocation.update({
-    where: { id: allocationId },
+  return prisma.taskAllocation.updateMany({
+    where: { brmId: allocation.brmId, taskTitle: allocation.taskTitle },
     data: { status: 'COMPLETED' }
   });
 };
@@ -915,5 +936,112 @@ export const approveQaTesting = async (allocationId, userId) => {
     data: { status: 'QA_COMPLETED' }
   });
 };
+
+//Security Member allocation
+export const getSecMembers = async () => {
+  let secMembers = await prisma.user.findMany({
+    where: { roles: { some: { role: { name: 'TSP_SECURITY' } } } },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      _count: {
+        select: { securityScans: { where: { status: 'ASSIGNED' } } }
+      }
+    }
+  });
+
+  // Fallback if no TSP_SECURITY users exist in your DB yet so dropdown is never empty
+  if (secMembers.length === 0) {
+    secMembers = await prisma.user.findMany({
+      take: 5,
+      select: { id: true, firstName: true, lastName: true }
+    });
+  }
+
+  return secMembers.map(m => ({
+    id: m.id,
+    name: `${m.firstName} ${m.lastName}`,
+    activeScansCount: m._count?.securityScans || 0
+  }));
+};
+
+export const assignBrmToSecurity = async (brmId, secMemberId) => {
+  const brm = await prisma.brm.update({
+    where: { id: brmId },
+    data: { currentStatus: 'SECURITY' },
+    include: { taskAllocations: true }
+  });
+
+  if (secMemberId) {
+    // Create ONE security scan for the whole BRM (or update existing)
+    const existingScan = await prisma.securityScan.findFirst({ where: { brmId } });
+    if (!existingScan) {
+      await prisma.securityScan.create({
+        data: {
+          brmId,
+          assignedSecId: secMemberId,
+          status: 'ASSIGNED',
+          scanNumber: 1
+        }
+      });
+    } else {
+      await prisma.securityScan.update({
+        where: { id: existingScan.id },
+        data: { assignedSecId: secMemberId, status: 'ASSIGNED' }
+      });
+    }
+  }
+
+  return brm;
+};
+
+
+export const addSecurityFindingService = async (brmId, data, userId) => {
+  // Mark any security scan for this BRM as FAILED
+  await prisma.securityScan.updateMany({
+    where: { brmId },
+    data: { status: 'FAILED' }
+  });
+
+  return await prisma.securityFinding.create({
+    data: {
+      brmId,
+      title: data.title,
+      description: data.description,
+      severity: data.severity, // CRITICAL, HIGH, MEDIUM, LOW
+      status: 'OPEN'
+    }
+  });
+};
+
+
+export const uploadSecurityReportService = async (brmId, file, userId) => {
+  const fileUrl = `/uploads/security-reports/${file.filename}`;
+  
+  const scan = await prisma.securityScan.findFirst({ where: { brmId } });
+  if (scan) {
+    return await prisma.securityScan.update({
+      where: { id: scan.id },
+      data: {
+        reportUrl: fileUrl,
+        reportName: file.originalname,
+        status: 'FAILED'
+      }
+    });
+  } else {
+    return await prisma.securityScan.create({
+      data: {
+        brmId,
+        assignedSecId: userId,
+        status: 'FAILED',
+        scanNumber: 1,
+        reportUrl: fileUrl,
+        reportName: file.originalname
+      }
+    });
+  }
+};
+
 
 

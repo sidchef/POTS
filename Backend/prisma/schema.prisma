@@ -232,6 +232,9 @@ model Brm {
 
   taskAllocations TaskAllocation[]
 
+  securityScans    SecurityScan[]
+  securityFindings SecurityFinding[]
+
 
 }
 
@@ -1108,7 +1111,7 @@ model SecurityScan {
 
   id              String @id @default(uuid())
 
-  taskId          String
+  brmId           String?
 
   assignedSecId   String
 
@@ -1116,13 +1119,17 @@ model SecurityScan {
 
   scanNumber      Int
 
+  reportUrl       String?
+
+  reportName      String?
+
   scannedAt       DateTime?
 
   completedAt     DateTime?
 
   createdAt       DateTime @default(now())
 
-  
+  brm             Brm? @relation(fields:[brmId],references:[id])
 
   assignedSec     User @relation(fields:[assignedSecId],references:[id])
 
@@ -1140,6 +1147,8 @@ enum SecurityScanStatus {
   IN_PROGRESS
 
   COMPLETED
+
+  FAILED
 }
 
 
@@ -1147,9 +1156,10 @@ model SecurityFinding {
 
   id              String @id @default(uuid())
 
-  securityScanId  String
+  brmId           String?
 
-  taskId          String
+  securityScanId  String?
+
 
   title           String
 
@@ -1163,8 +1173,10 @@ model SecurityFinding {
 
   closedAt        DateTime?
 
+  brm              Brm? @relation(fields:[brmId],references:[id])
+
   
-  securityScan     SecurityScan @relation(fields:[securityScanId],references:[id])
+  securityScan     SecurityScan? @relation(fields:[securityScanId],references:[id])
 
   securityFindingHistories SecurityFindingHistory[]
 }

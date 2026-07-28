@@ -67,7 +67,7 @@ export default function HfDashboard() {
     const interval = setInterval(() => {
       fetchPending(false);
       fetchAllBrms();
-    }, 10000);
+    }, 60000);
     
     const onFocus = () => {
       fetchPending(false);
