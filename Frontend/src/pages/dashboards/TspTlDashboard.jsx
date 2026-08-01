@@ -206,7 +206,7 @@ export default function TspTlDashboard() {
     setAllocations([]);
     setMatchedMembers([]);
     setSelectedSkill('');
-    setAllocForm({ assignments:[], taskTitle: '', taskDescription: '', startDate: '', endDate: '' });
+    setAllocForm({ assignments:[], taskTitle: brm.currentStatus === 'SECURITY' ? '[Remediation] ' : '', taskDescription: '', startDate: '', endDate: '' });
     try {
       // Fetch full BRM (includes technologyRequirements) + existing allocations in parallel
       
@@ -526,7 +526,7 @@ export default function TspTlDashboard() {
 
         {/* ─── SECURITY MANAGEMENT TAB ─────────────────────────────── */}
         {activeTab === 'security' && (
-          <SecurityManagementLayout brms={allBrms} onRefresh={() => fetchAllBrms(false)}/>
+          <SecurityManagementLayout brms={allBrms} onRefresh={() => fetchAllBrms(false)} onSelectBrmToAllocate={(brm) => openAllocModal(brm)} />
         )}
 
 

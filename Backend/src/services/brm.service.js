@@ -277,6 +277,8 @@ export const getBrmById = async (brmId) => {
 
         }
       },
+      securityScans: { orderBy: { scanNumber: "desc" } },
+      securityFindings: { orderBy: { createdAt: "desc" } }
 
 
 
@@ -712,8 +714,8 @@ export const finalizeTechnologyRequirements = async (brmId, tspTlId) => {
 export const allocateTask = async (brmId, tspTlId, { assignments, taskTitle, taskDescription, startDate, endDate }) => {
   const brm = await prisma.brm.findUnique({ where: { id: brmId } });
   if (!brm) throw new ApiError(404, "BRM not found");
-  if (brm.currentStatus !== "READY_FOR_TASK_ALLOCATION" && brm.currentStatus !== "CODING_IN_PROGRESS") {
-    throw new ApiError(400, "BRM is not in READY_FOR_TASK_ALLOCATION or CODING_IN_PROGRESS status");
+  if (brm.currentStatus !== "READY_FOR_TASK_ALLOCATION" && brm.currentStatus !== "CODING_IN_PROGRESS" && brm.currentStatus !== "SECURITY") {
+    throw new ApiError(400, "BRM is not in READY_FOR_TASK_ALLOCATION, CODING_IN_PROGRESS, or SECURITY status");
   }
 
   if (!Array.isArray(assignments) || assignments.length === 0) {
@@ -761,7 +763,9 @@ export const allocateTask = async (brmId, tspTlId, { assignments, taskTitle, tas
     }
   }
 
-  if (brm.currentStatus === "READY_FOR_TASK_ALLOCATION" && createdAllocations.length > 0) {
+  if ((brm.currentStatus === "READY_FOR_TASK_ALLOCATION" || brm.currentStatus === "SECURITY") && createdAllocations.length > 0) {
+    const oldStatus = brm.currentStatus;
+
     await prisma.brm.update({
       where: { id: brmId },
       data: { currentStatus: "CODING_IN_PROGRESS" }
@@ -770,9 +774,9 @@ export const allocateTask = async (brmId, tspTlId, { assignments, taskTitle, tas
     await prisma.brmHistory.create({
       data: {
         brmId: brmId,
-        oldStatus: "READY_FOR_TASK_ALLOCATION",
+        oldStatus: oldStatus,
         newStatus: "CODING_IN_PROGRESS",
-        remarks: "Development phase started.",
+        remarks: oldStatus === "SECURITY" ? "Security Remediation task assigned. BRM returned to coding." : "Development phase started.",
         changedById: tspTlId
       }
     });
@@ -925,17 +929,57 @@ export const addQaEvidence = async (scenarioId, file, userId) => {
 };
 
 
-// TL Approves QA Testing
+export const submitQaEvidencesService = async (allocationId, qaMemberId) => {
+  const allocation = await prisma.taskAllocation.findUnique({
+    where: { id: allocationId },
+    include: { brm: true }
+  });
+
+  if (!allocation) throw new ApiError(404, "Allocation not found");
+
+  // Verify the user is the assigned QA (optional security check)
+  if (allocation.qaMemberId !== qaMemberId) {
+    throw new ApiError(403, "Only the assigned QA member can submit evidences");
+  }
+
+  // Create a notification for the TSP TL who assigned this QA task
+  await createNotification(
+    allocation.assignedById,
+    `QA Evidences Submitted`,
+    `QA tester has submitted evidences for task '${allocation.taskTitle}' (BRM ${allocation.brm.brmNumber}). Please review and mark QA as complete.`,
+    `/dashboards/tsp-tl`
+  );
+
+  return { success: true };
+};
+
+
+
+// TL Approves QA Testing & Handles Security Transitions
 export const approveQaTesting = async (allocationId, userId) => {
   const allocation = await prisma.taskAllocation.findUnique({ where: { id: allocationId } });
   if (!allocation) throw new ApiError(404, "Allocation not found");
-  if (allocation.assignedById !== userId) throw new ApiError(403, "Only the assigning TL can approve this QA");
 
-  return await prisma.taskAllocation.updateMany({
+  await prisma.taskAllocation.updateMany({
     where: { brmId: allocation.brmId, taskTitle: allocation.taskTitle },
     data: { status: 'QA_COMPLETED' }
   });
+
+  // Check if all tasks for this BRM are now QA_COMPLETED
+  const allTasks = await prisma.taskAllocation.findMany({ where: { brmId: allocation.brmId } });
+  const allCompleted = allTasks.every(t => t.status === 'QA_COMPLETED');
+  
+  if (allCompleted) {
+    const brm = await prisma.brm.findUnique({ where: { id: allocation.brmId } });
+    
+    // We purposely do NOT automatically transition to SECURITY here. 
+    // This ensures the BRM shows up in the "Pending Allocation" tab 
+    // of the Security Management dashboard so the TL can explicitly assign it.
+  }
+
+  return { success: true };
 };
+
 
 //Security Member allocation
 export const getSecMembers = async () => {
@@ -974,74 +1018,185 @@ export const assignBrmToSecurity = async (brmId, secMemberId) => {
   });
 
   if (secMemberId) {
-    // Create ONE security scan for the whole BRM (or update existing)
-    const existingScan = await prisma.securityScan.findFirst({ where: { brmId } });
-    if (!existingScan) {
-      await prisma.securityScan.create({
-        data: {
-          brmId,
-          assignedSecId: secMemberId,
-          status: 'ASSIGNED',
-          scanNumber: 1
-        }
-      });
-    } else {
-      await prisma.securityScan.update({
-        where: { id: existingScan.id },
-        data: { assignedSecId: secMemberId, status: 'ASSIGNED' }
-      });
-    }
-  }
+    const existingScansCount = await prisma.securityScan.count({ where: { brmId } });
+    const newScanNumber = existingScansCount + 1;
 
+    await prisma.securityScan.create({
+      data: {
+        brmId,
+        assignedSecId: secMemberId,
+        status: 'ASSIGNED',
+        scanNumber: newScanNumber
+      }
+    });
+
+    await prisma.brmHistory.create({
+      data: {
+        brmId,
+        oldStatus: newScanNumber === 1 ? 'QA_COMPLETED' : brm.currentStatus,
+        newStatus: "SECURITY",
+        remarks: newScanNumber === 1 
+          ? `Initial Security Scan Assigned (Scan #1)` 
+          : `Security Remediation Scan Assigned (Scan #${newScanNumber})`,
+        changedById: secMemberId
+      }
+    });
+  }
   return brm;
 };
 
 
+
 export const addSecurityFindingService = async (brmId, data, userId) => {
-  // Mark any security scan for this BRM as FAILED
-  await prisma.securityScan.updateMany({
+  const latestScan = await prisma.securityScan.findFirst({
     where: { brmId },
-    data: { status: 'FAILED' }
+    orderBy: { scanNumber: 'desc' }
   });
+
+  // We no longer mark it as FAILED here. We wait for the Submit button.
 
   return await prisma.securityFinding.create({
     data: {
       brmId,
+      securityScanId: latestScan?.id,
       title: data.title,
       description: data.description,
-      severity: data.severity, // CRITICAL, HIGH, MEDIUM, LOW
+      severity: data.severity,
       status: 'OPEN'
     }
   });
 };
 
-
 export const uploadSecurityReportService = async (brmId, file, userId) => {
   const fileUrl = `/uploads/security-reports/${file.filename}`;
-  
-  const scan = await prisma.securityScan.findFirst({ where: { brmId } });
-  if (scan) {
+  const latestScan = await prisma.securityScan.findFirst({
+    where: { brmId },
+    orderBy: { scanNumber: 'desc' }
+  });
+
+  if (latestScan) {
     return await prisma.securityScan.update({
-      where: { id: scan.id },
+      where: { id: latestScan.id },
       data: {
-        reportUrl: fileUrl,
-        reportName: file.originalname,
-        status: 'FAILED'
-      }
-    });
-  } else {
-    return await prisma.securityScan.create({
-      data: {
-        brmId,
-        assignedSecId: userId,
-        status: 'FAILED',
-        scanNumber: 1,
         reportUrl: fileUrl,
         reportName: file.originalname
+        // We no longer mark it as FAILED here.
       }
     });
   }
 };
 
+
+
+export const submitSecurityScanService = async (brmId, userId) => {
+  const latestScan = await prisma.securityScan.findFirst({
+    where: { brmId },
+    orderBy: { scanNumber: 'desc' },
+    include: { securityFindings: true }
+  });
+
+  if (!latestScan) throw new ApiError(404, "No active security scan found");
+  if (!latestScan.reportUrl) throw new ApiError(400, "You must upload a security report before submitting.");
+
+  const hasFindings = latestScan.securityFindings.length > 0;
+  const newScanStatus = hasFindings ? 'FAILED' : 'COMPLETED';
+  // Keep the BRM status as SECURITY so the Product Lead can verify it before final completion.
+  const newBrmStatus = 'SECURITY'; 
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Update the scan status
+    await tx.securityScan.update({
+      where: { id: latestScan.id },
+      data: { status: newScanStatus }
+    });
+
+    // 2. Log History
+    await tx.brmHistory.create({
+      data: {
+        brmId,
+        oldStatus: "SECURITY",
+        newStatus: newBrmStatus,
+        remarks: hasFindings 
+          ? `Security Scan #${latestScan.scanNumber} Failed (${latestScan.securityFindings.length} findings).`
+          : `Security Scan #${latestScan.scanNumber} Passed successfully. Pending PL Verification.`,
+        changedById: userId
+      }
+    });
+  });
+
+  return { success: true, status: newScanStatus };
+};
+
+
+
+
+
+
+export const createRemediationTaskService = async (brmId, developerId, taskDescription, tspTlId) => {
+  const brm = await prisma.brm.findUnique({ where: { id: brmId } });
+  if (!brm) throw new ApiError(404, "BRM not found");
+
+  // Create the task with [Remediation] prefix
+  const taskTitle = `[Remediation] Security Fixes - ${Date.now().toString().slice(-4)}`;
+  const allocation = await prisma.taskAllocation.create({
+    data: {
+      brmId,
+      taskTitle,
+      taskDescription,
+      tspMemberId: developerId,
+      assignedById: tspTlId,
+      skill: 'Full Stack',
+      status: 'ACTIVE',
+      startDate: new Date(),
+      endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 1 week deadline
+    }
+  });
+
+  // Change BRM status back to CODING_IN_PROGRESS
+  await prisma.brm.update({
+    where: { id: brmId },
+    data: { currentStatus: 'CODING_IN_PROGRESS' }
+  });
+
+  // Log History
+  await prisma.brmHistory.create({
+    data: {
+      brmId,
+      oldStatus: brm.currentStatus,
+      newStatus: "CODING_IN_PROGRESS",
+      remarks: "Security Remediation task assigned. BRM returned to coding.",
+      changedById: tspTlId
+    }
+  });
+
+  return allocation;
+};
+
+
+export const completeBrmService = async (brmId, userId) => {
+  const brm = await prisma.brm.findUnique({ where: { id: brmId } });
+  if (!brm) throw new ApiError(404, "BRM not found");
+
+  await prisma.$transaction(async (tx) => {
+    // 1. Mark BRM as COMPLETED
+    await tx.brm.update({
+      where: { id: brmId },
+      data: { currentStatus: 'COMPLETED' }
+    });
+
+    // 2. Log it in history
+    await tx.brmHistory.create({
+      data: {
+        brmId,
+        oldStatus: brm.currentStatus,
+        newStatus: 'COMPLETED',
+        remarks: 'Product Lead verified the BRM and marked it as Completed.',
+        changedById: userId
+      }
+    });
+  });
+
+  return { success: true, message: "BRM successfully completed" };
+};
 
 

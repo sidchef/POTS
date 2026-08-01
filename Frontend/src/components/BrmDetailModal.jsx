@@ -17,8 +17,10 @@ export default function BrmDetailModal({ target: initialTarget, onClose }) {
       api.get(`/brms/${initialTarget.id}`)
         .then(res => setTarget(res.data.data))
         .catch(err => console.error("Failed to fetch full BRM details:", err));
+    } else if (!initialTarget) {
+      setTarget(null);
     }
-  }, [initialTarget?.id]);
+  }, [initialTarget]);
 
   const handleFetchScenarios = async (allocationId) => {
     setLoadingScenarios(true);
@@ -285,6 +287,57 @@ export default function BrmDetailModal({ target: initialTarget, onClose }) {
               </div>
             );
           })()}
+
+
+            {/* 5.6 Security Scans & Findings */}
+  {(target.securityScans?.length > 0 || target.securityFindings?.length > 0) && (
+    <div className="mb-8">
+      <h4 className="text-slate-300 text-sm font-semibold mb-3 border-b border-slate-700 pb-2">Security Scans & Findings</h4>
+      
+      {/* Scan History */}
+      {target.securityScans?.length > 0 && (
+        <div className="space-y-2 mb-4">
+          <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-2">Scan History</p>
+          {target.securityScans.map(scan => (
+            <div key={scan.id} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+              <div>
+                <p className="text-white text-sm font-bold">Scan #{scan.scanNumber}</p>
+                <p className="text-xs text-slate-400">Status: {scan.status}</p>
+              </div>
+              {scan.reportUrl && (
+                <a 
+                  href={`${import.meta.env.VITE_API_URL.replace('/api','')}${scan.reportUrl}`} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  className="px-3 py-1 bg-brand-500/10 text-brand-400 text-xs rounded border border-brand-500/30 hover:bg-brand-500/20"
+                >
+                  Download Report
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Findings History */}
+      {target.securityFindings?.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-2">Logged Findings</p>
+          {target.securityFindings.map(finding => (
+            <div key={finding.id} className="p-3 bg-slate-900/50 rounded-lg border border-slate-700 border-l-4" 
+                 style={{ borderLeftColor: finding.severity === 'CRITICAL' ? '#ef4444' : finding.severity === 'HIGH' ? '#f97316' : '#eab308' }}>
+              <div className="flex justify-between items-start">
+                <p className="text-white text-sm font-bold">{finding.title}</p>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">{finding.severity}</span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">{finding.description}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )}
+
 
 
 

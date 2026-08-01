@@ -111,6 +111,24 @@ export default function TspQaDashboard() {
     return Object.values(groups);
   })();
 
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmitQaEvidences = async () => {
+    if (!window.confirm("Are you sure you want to submit the evidences to the TSP TL?")) return;
+    
+    setIsSubmitting(true);
+    try {
+      await api.post(`/brms/allocations/${selectedTask.id}/submit-qa`);
+      alert("Evidences successfully submitted to TSP TL!");
+      fetchQaTasks(); // refresh task list if needed
+    } catch (err) {
+      alert("Failed to submit evidences: " + (err.response?.data?.message || err.message));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+
   const tabs = [
     { key: 'overview', label: ' Overview', count: allBrms.length },
     { key: 'tasks', label: ' My QA Tasks', count: groupedQaTasks.length },
@@ -310,8 +328,21 @@ export default function TspQaDashboard() {
                               </label>
                             </div>
 
+                                
+
+
                           </div>
                         ))}
+                                        {/* Submit Evidences Button */}
+                                <div className="mt-8 flex justify-end pt-4 border-t border-slate-700/50">
+                                <button 
+                                 onClick={handleSubmitQaEvidences}
+                                 disabled={isSubmitting}
+                                 className="bg-green-600 hover:bg-green-500 text-white font-bold py-2.5 px-6 rounded-lg transition-colors shadow-lg shadow-green-600/20 flex items-center gap-2"
+                                    >
+                                   {isSubmitting ? 'Submitting...' : ' Submit Evidences to TL'}
+                                </button>
+                                </div>
                       </div>
                     )}
                   </div>

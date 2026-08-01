@@ -240,6 +240,16 @@ export const addQaEvidence = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+export const submitQaEvidences = async (req, res, next) => {
+  try {
+    const result = await brmService.submitQaEvidencesService(req.params.allocationId, req.user.id);
+    res.status(200).json(new ApiResponse(200, result, "QA Evidences submitted successfully."));
+  } catch (err) { 
+    next(err); 
+  }
+};
+
+
 
 export const approveQaTesting = async (req, res, next) => {
   try {
@@ -285,3 +295,26 @@ export const uploadSecurityReportController = async (req, res, next) => {
   }
 };
 
+
+export const createRemediationTask = async (req, res, next) => {
+  try {
+    const { developerId, taskDescription } = req.body;
+    const result = await brmService.createRemediationTaskService(req.params.id, developerId, taskDescription, req.user.id);
+    res.status(201).json(new ApiResponse(201, result, "Remediation task created and BRM sent to Coding In Progress"));
+  } catch (err) { next(err); }
+};
+
+export const submitSecurityScan = async (req, res, next) => {
+  try {
+    const result = await brmService.submitSecurityScanService(req.params.id, req.user.id);
+    res.status(200).json(new ApiResponse(200, result, "Security scan submitted successfully"));
+  } catch (err) { next(err); }
+};
+
+
+export const completeBrm = async (req, res, next) => {
+  try {
+    const result = await brmService.completeBrmService(req.params.id, req.user.id);
+    res.status(200).json(new ApiResponse(200, result, "BRM marked as completed"));
+  } catch (err) { next(err); }
+};

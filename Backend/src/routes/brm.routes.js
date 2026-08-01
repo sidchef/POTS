@@ -5,7 +5,8 @@ import {
   listBrms, approveBrm, rejectBrm, getMyPendingApprovals,
   assignBrmToTm, submitUserStories, assignBrmToTspTl, submitArchitecture, approveArchitecture,addTechnologyRequirement, finalizeTechnologyRequirements,
   allocateTask,getBrmAllocations,completeAllocation , getMyAssignedTasks, getQaMembers, assignTaskToQa, getMyQaTasks,
-  addQaTestScenario, getQaScenarios, addQaEvidence,approveQaTesting, getSecMembers, assignBrmToSecurity,addSecurityFinding, uploadSecurityReportController// Added new functions here
+  addQaTestScenario, getQaScenarios, addQaEvidence,approveQaTesting, getSecMembers, assignBrmToSecurity,addSecurityFinding, uploadSecurityReportController,
+  createRemediationTask, submitQaEvidences , submitSecurityScan, completeBrm// Added new functions here
 } from "../controllers/brm.controller.js";
 import prisma from "../config/prisma.js";
 import { uploadArchitecture, uploadEvidence,uploadSecurityReport } from "../middleware/upload.middleware.js";
@@ -45,6 +46,8 @@ router.get("/sec-members", authenticate, authorize("SUBMIT_ARCHITECTURE"), getSe
 
 router.post("/allocations/assign-qa", assignTaskToQa);
 router.get("/qa/my-tasks", getMyQaTasks);
+router.post("/allocations/:allocationId/submit-qa", authenticate, submitQaEvidences);
+
 
 
 router.get("/:id", authorize("BRM_DETAILS"), getBrmById);
@@ -52,6 +55,9 @@ router.get("/:id", authorize("BRM_DETAILS"), getBrmById);
 // Approval routes — HF and HT only
 router.post("/:id/approve", authorize("COMMITTEE_REVIEW"), approveBrm);
 router.post("/:id/reject", authorize("COMMITTEE_REVIEW"), rejectBrm);
+//mark brm completed by PL
+router.post("/:id/complete", authorize("CREATE_BRM"), completeBrm);
+
 
 // Phase 2: User Story Assignment & Submission
 router.post("/:id/assign-tm", authorize("CREATE_BRM"), assignBrmToTm); 
@@ -85,6 +91,11 @@ router.patch("/allocations/:allocationId/qa-complete", authenticate, authorize("
 router.post("/:id/assign-security", authenticate, authorize("SUBMIT_ARCHITECTURE"), assignBrmToSecurity);
 router.post("/:id/security-findings", authenticate, addSecurityFinding);
 router.post("/:id/security-report", authenticate, uploadSecurityReport.single('document'), uploadSecurityReportController);
+
+router.post("/:id/remediation-task", authenticate, authorize("SUBMIT_ARCHITECTURE"), createRemediationTask);
+
+
+router.post("/:id/submit-security-scan", authenticate, submitSecurityScan);
 
 
 

@@ -16,6 +16,7 @@ export default function TspSecDashboard() {
   const [uploadModal, setUploadModal] = useState({ isOpen: false, brmId: null });
   const [file, setFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submittingScan, setSubmittingScan] = useState(false);
 
   const fetchBrms = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -85,6 +86,20 @@ export default function TspSecDashboard() {
     return colors[severity] || colors.MEDIUM;
   };
 
+  const handleSubmitSecurityScan = async (brmId) => {
+    if (!window.confirm("Are you sure you want to submit this security scan?")) return;
+    setSubmittingScan(true);
+    try {
+      const res = await api.post(`/brms/${brmId}/submit-security-scan`);
+      alert(`Scan submitted! Status: ${res.data.data.status}`);
+      fetchBrms();
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to submit scan");
+    } finally {
+      setSubmittingScan(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col">
       <Navbar title="TSP SECURITY DASHBOARD" />
@@ -138,14 +153,18 @@ export default function TspSecDashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {assignedBrms.map(brm => {
-                  const uniqueTasks = Array.from(new Set(brm.taskAllocations?.map(a => a.taskTitle) || []));
-                  const findings = brm.securityFindings || [];
-                  const reportScan = brm.securityScans?.find(s => s.reportUrl);
+                                {assignedBrms.map(brm => {
+                  const sortedScans = [...(brm.securityScans || [])].sort((a, b) => b.scanNumber - a.scanNumber);
+                  const latestScan = sortedScans[0];
+                  const historicalScans = sortedScans.slice(1);
+                  const latestScanFindings = (brm.securityFindings || []).filter(f => f.securityScanId === latestScan?.id || (latestScan?.scanNumber === 1 && !f.securityScanId));
+                                    const reportScan = latestScan?.reportUrl ? latestScan : null;
+                  const isSubmitted = latestScan?.status === 'COMPLETED' || latestScan?.status === 'FAILED';
 
                   return (
                     <div key={brm.id} className="bg-slate-800/80 border border-slate-700 hover:border-indigo-500/50 p-6 rounded-2xl transition-all shadow-xl flex flex-col justify-between space-y-5">
                       <div>
+                        {/* HEADER */}
                         <div className="flex items-start justify-between gap-2 mb-3">
                           <span className="text-indigo-400 font-mono text-xs font-bold bg-indigo-500/10 px-2.5 py-1 rounded-md border border-indigo-500/20">
                             {brm.brmNumber}
@@ -159,51 +178,111 @@ export default function TspSecDashboard() {
                         <h3 className="text-white font-bold text-lg leading-snug">{brm.title}</h3>
                         {brm.TeamName && <p className="text-slate-400 text-xs mt-1">Team: <strong className="text-slate-300">{brm.TeamName}</strong></p>}
 
-                        {/* DISPLAY UPLOADED REPORT */}
-                        {reportScan && (
-                          <div className="mt-3 p-3 bg-slate-900/80 rounded-xl border border-indigo-500/30 flex items-center justify-between text-xs">
-                            <span className="text-indigo-300 font-medium truncate">📄 {reportScan.reportName}</span>
-                            <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded font-bold">Uploaded</span>
+                        {/* HISTORICAL SCANS */}
+                        {historicalScans.length > 0 && (
+                          <div className="mt-5 space-y-3">
+                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Previous Scans</p>
+                            {historicalScans.map(scan => {
+                              const scanFindings = (brm.securityFindings || []).filter(f => f.securityScanId === scan.id || (scan.scanNumber === 1 && !f.securityScanId));
+                              return (
+                                <div key={scan.id} className="bg-slate-900/40 p-3 rounded-xl border border-slate-700/40 opacity-80 hover:opacity-100 transition-opacity">
+                                  <h4 className="text-slate-400 font-bold text-[11px] mb-2">Scan #{scan.scanNumber} History</h4>
+                                  
+                                  {scan.reportUrl && (
+                                    <div className="p-2 mb-2 bg-slate-800/80 rounded border border-slate-700 flex items-center justify-between text-[11px]">
+                                      <span className="text-slate-400 truncate">📄 {scan.reportName}</span>
+                                    </div>
+                                  )}
+                                  
+                                  {scanFindings.length > 0 && (
+                                    <div className="space-y-1.5">
+                                      {scanFindings.map(f => (
+                                        <div key={f.id} className="bg-slate-800/40 p-2 rounded text-[10px] border border-slate-700/50 flex justify-between items-center">
+                                          <span className="text-slate-300 truncate pr-2">{f.title}</span>
+                                          <span className={`font-bold ${getSeverityBadge(f.severity)} px-1.5 py-0.5 rounded shrink-0`}>{f.severity}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
 
-                        {/* DISPLAY MANUAL FINDINGS */}
-                        {findings.length > 0 && (
-                          <div className="mt-4 pt-3 border-t border-slate-700/60 space-y-2">
-                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Logged Findings ({findings.length})</p>
-                            <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-                              {findings.map(f => (
-                                <div key={f.id} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50 flex flex-col gap-1 text-xs">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-white font-semibold">{f.title}</span>
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getSeverityBadge(f.severity)}`}>
-                                      {f.severity}
-                                    </span>
-                                  </div>
-                                  <p className="text-slate-400 text-[11px] leading-relaxed">{f.description}</p>
-                                </div>
-                              ))}
-                            </div>
+                        {/* CURRENT SCAN SECTION */}
+                        <div className="mt-5 pt-4 border-t border-slate-700/80">
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-yellow-400 text-[10px] font-bold bg-yellow-500/10 px-2 py-0.5 rounded-full border border-yellow-500/20">
+                              Active: Scan #{latestScan?.scanNumber || 1}
+                            </span>
                           </div>
-                        )}
+
+                          {/* LATEST REPORT */}
+                          {reportScan && (
+                            <div className="mt-3 p-3 bg-slate-900/80 rounded-xl border border-indigo-500/30 flex items-center justify-between text-xs">
+                              <span className="text-indigo-300 font-medium truncate">📄 {reportScan.reportName}</span>
+                              <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded font-bold">Uploaded</span>
+                            </div>
+                          )}
+
+                          {/* LATEST FINDINGS */}
+                          {latestScanFindings.length > 0 && (
+                            <div className="mt-4 pt-3 border-t border-slate-700/60 space-y-2">
+                              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">New Findings ({latestScanFindings.length})</p>
+                              <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                                {latestScanFindings.map(f => (
+                                  <div key={f.id} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50 flex flex-col gap-1 text-xs">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-white font-semibold">{f.title}</span>
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getSeverityBadge(f.severity)}`}>
+                                        {f.severity}
+                                      </span>
+                                    </div>
+                                    <p className="text-slate-400 text-[11px] leading-relaxed">{f.description}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* SUBMIT BUTTON */}
+                        <div className="mt-5 pt-4 border-t border-slate-700/60">
+                          <button 
+                            onClick={() => handleSubmitSecurityScan(brm.id)}
+                            disabled={submittingScan || !reportScan || isSubmitted}
+                            className={`w-full font-bold py-2.5 px-4 rounded-xl transition-colors shadow-lg flex items-center justify-center gap-2 ${
+                              isSubmitted 
+                                ? 'bg-slate-800/80 text-emerald-400 border border-emerald-500/30' 
+                                : 'bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white'
+                            }`}
+                          >
+                            {submittingScan ? 'Submitting...' : (isSubmitted ? '✅ Scan Submitted' : (reportScan ? '✅ Submit Security Scan' : '⚠️ Upload Report to Submit'))}
+                          </button>
+                        </div>
                       </div>
 
                       {/* ACTION BUTTONS */}
                       <div className="pt-4 border-t border-slate-700 flex flex-wrap items-center gap-2 justify-between">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => setUploadModal({ isOpen: true, brmId: brm.id })}
-                            className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold rounded-lg transition-all border border-slate-600"
-                          >
-                            📤 Upload File
-                          </button>
-                          <button
-                            onClick={() => setFindingModal({ isOpen: true, brmId: brm.id })}
-                            className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-all border border-red-500/30"
-                          >
-                            + Add Finding
-                          </button>
-                        </div>
+                        {!isSubmitted ? (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setUploadModal({ isOpen: true, brmId: brm.id })}
+                              className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-semibold rounded-lg transition-all border border-slate-600"
+                            >
+                              📤 Upload File
+                            </button>
+                            <button
+                              onClick={() => setFindingModal({ isOpen: true, brmId: brm.id })}
+                              className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-all border border-red-500/30"
+                            >
+                              + Add Finding
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2"></div>
+                        )}
 
                         <button
                           onClick={() => setSelectedBrm(brm)}
@@ -212,8 +291,10 @@ export default function TspSecDashboard() {
                           Details →
                         </button>
                       </div>
+
                     </div>
                   );
+
                 })}
               </div>
             )}

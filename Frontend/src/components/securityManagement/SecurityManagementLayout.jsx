@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../../api/axios.js';
 import Modal from '../Modal.jsx';
 
-export default function SecurityManagementLayout({ brms = [], onRefresh }) {
+export default function SecurityManagementLayout({ brms = [], onRefresh, onSelectBrmToAllocate }) {
   const [activeSidebarTab, setActiveSidebarTab] = useState('pending_allocation');
   const [selectedBrm, setSelectedBrm] = useState(null);
   const [allocModal, setAllocModal] = useState({ isOpen: false, brm: null });
@@ -34,15 +34,24 @@ export default function SecurityManagementLayout({ brms = [], onRefresh }) {
     b.taskAllocations.every(alloc => alloc.status === 'QA_COMPLETED')
   );
 
-  const hasSecurityIssues = (brm) => {
-    const hasReport = brm.securityScans?.some(s => s.reportUrl);
-    const hasFindings = brm.securityFindings?.length > 0;
-    const isFailed = brm.securityScans?.some(s => s.status === 'FAILED');
-    return hasReport || hasFindings || isFailed;
+    const hasSecurityIssues = (brm) => {
+    if (!brm.securityScans || brm.securityScans.length === 0) return false;
+    const latestScan = [...brm.securityScans].sort((a, b) => b.scanNumber - a.scanNumber)[0];
+    return latestScan.status === 'FAILED';
   };
 
-  const underScanBrms = brms.filter(b => b.currentStatus === 'SECURITY' && !hasSecurityIssues(b));
+  const hasCompletedScan = (brm) => {
+    return brm.securityScans && brm.securityScans.some(s => s.status === 'COMPLETED');
+  };
+
+  const underScanBrms = brms.filter(b => b.currentStatus === 'SECURITY' && !hasSecurityIssues(b) && !hasCompletedScan(b));
+  
   const failedScanBrms = brms.filter(b => b.currentStatus === 'SECURITY' && hasSecurityIssues(b));
+
+  const successfulScanBrms = brms.filter(b => 
+    (b.currentStatus === 'SECURITY' || b.currentStatus === 'COMPLETED') && 
+    hasCompletedScan(b)
+  );
 
 
   const handleOpenAllocModal = (brm) => {
@@ -211,6 +220,42 @@ export default function SecurityManagementLayout({ brms = [], onRefresh }) {
             )}
           </div>
 
+          {/* Tab 4: Successful Scans */}
+          <div>
+            <button 
+              onClick={() => { setActiveSidebarTab('successful_scans'); setSelectedBrm(null); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                activeSidebarTab === 'successful_scans' 
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 shadow-lg shadow-emerald-500/10' 
+                  : 'text-slate-400 hover:bg-slate-800 border border-transparent'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>Successful Scans</span>
+              </div>
+              <span className="bg-slate-800/80 text-xs px-2.5 py-0.5 rounded-full border border-slate-700 font-bold text-white">
+                {successfulScanBrms.length}
+              </span>
+            </button>
+
+            {activeSidebarTab === 'successful_scans' && successfulScanBrms.length > 0 && (
+              <div className="mt-2 ml-4 pl-3 border-l border-emerald-500/30 space-y-1.5">
+                {successfulScanBrms.map(brm => (
+                  <div 
+                    key={brm.id}
+                    onClick={() => setSelectedBrm(brm)}
+                    className={`p-2.5 rounded-lg text-xs cursor-pointer transition-all ${
+                      selectedBrm?.id === brm.id ? 'bg-emerald-600/20 text-white border border-emerald-500/50 font-semibold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <p className="truncate">{brm.title}</p>
+                    <p className="text-[10px] text-emerald-400 font-mono mt-0.5">{brm.brmNumber}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
         </div>
       </div>
@@ -363,18 +408,31 @@ export default function SecurityManagementLayout({ brms = [], onRefresh }) {
                           {brm.TeamName && <p className="text-slate-400 text-xs mt-1">Team: {brm.TeamName}</p>}
                         </div>
 
-                        {/* DOWNLOAD REPORT FILE BUTTON */}
-                        {reportScan && (
-                          <a
-                            href={`http://localhost:3000${reportScan.reportUrl}`}
+                          {/* DOWNLOAD REPORT & ASSIGN TASK BUTTONS */}
+                         <div className="flex gap-2">
+                            {reportScan && (
+                           <a
+                            href={`${import.meta.env.VITE_API_URL.replace('/api','')}${reportScan.reportUrl}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/20 flex items-center gap-2"
-                          >
-                            <span> Download Report File</span>
-                            <span className="text-[10px] opacity-75">({reportScan.reportName})</span>
-                          </a>
-                        )}
+                            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-brand-400 text-sm font-medium rounded-lg transition-colors border border-brand-500/30 flex items-center gap-2"
+                             >
+                              <span>📄</span> Download Report
+                               </a>
+                             )}
+    
+                             <button
+                              onClick={() => {
+                                if (onSelectBrmToAllocate) {
+                                  onSelectBrmToAllocate(brm);
+                                }
+                              }}
+                               className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm font-bold rounded-lg transition-colors border border-red-500/50 flex items-center gap-2"
+                                >
+                                <span>🔨</span> Assign Remediation Task
+                              </button>
+                      </div>
+
                       </div>
 
                       {/* DISPLAY MANUAL FINDINGS WITH SEVERITY */}
@@ -393,6 +451,113 @@ export default function SecurityManagementLayout({ brms = [], onRefresh }) {
                                 <p className="text-slate-400 text-xs leading-relaxed">{f.description}</p>
                               </div>
                             ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* VIEW 4: SUCCESSFUL SCANS */}
+        {activeSidebarTab === 'successful_scans' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="border-b border-slate-700/60 pb-4 flex justify-between items-center">
+              <div>
+                <h2 className="text-white text-xl font-semibold">Successful Security Scans</h2>
+                <p className="text-slate-400 text-sm mt-1">BRMs that have passed all security scans with zero findings.</p>
+              </div>
+              <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full text-xs font-semibold">
+                {successfulScanBrms.length} {successfulScanBrms.length === 1 ? 'Project' : 'Projects'} Passed
+              </span>
+            </div>
+
+            {successfulScanBrms.length === 0 ? (
+              <div className="text-center py-16 bg-slate-900/30 border border-dashed border-slate-700 rounded-2xl">
+                <svg className="w-12 h-12 text-slate-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-slate-400 font-medium text-sm">No Successful Scans Yet</p>
+                <p className="text-slate-500 text-xs mt-1">BRMs that pass security scans completely will appear here.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {successfulScanBrms.map(brm => {
+                  return (
+                    <div key={brm.id} className="bg-slate-900/60 border border-emerald-500/30 p-6 rounded-2xl shadow-lg flex flex-col space-y-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-3 mb-2">
+                            <span className="text-emerald-400 font-mono text-xs font-bold bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20">
+                              {brm.brmNumber}
+                            </span>
+                            <span className="text-emerald-400 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                              Passed Security
+                            </span>
+                          </div>
+                          <h3 className="text-white font-bold text-lg">{brm.title}</h3>
+                          <p className="text-slate-400 text-xs mt-1">Team: <strong className="text-slate-300">{brm.TeamName}</strong></p>
+                        </div>
+                      </div>
+
+                      {/* SCAN HISTORY SECTION */}
+                      {brm.securityScans && brm.securityScans.length > 0 && (
+                        <div className="pt-4 border-t border-slate-800 space-y-3">
+                          <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">All Security Scans History ({brm.securityScans.length})</h4>
+                          <div className="space-y-3">
+                            {[...brm.securityScans].sort((a,b) => a.scanNumber - b.scanNumber).map(scan => {
+                              const scanFindings = (brm.securityFindings || []).filter(f => f.securityScanId === scan.id || (scan.scanNumber === 1 && !f.securityScanId));
+                              return (
+                                <div key={scan.id} className="bg-slate-800/70 p-4 rounded-xl border border-slate-700/60 flex flex-col gap-3">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-slate-200 font-bold text-sm">Scan #{scan.scanNumber}</span>
+                                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${scan.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                                      {scan.status}
+                                    </span>
+                                  </div>
+                                  
+                                                                    {scan.reportUrl && (
+                                    <div className="p-2 bg-slate-900/60 rounded border border-slate-700 flex items-center justify-between text-xs transition-colors hover:bg-slate-800/80">
+                                      <div className="flex items-center gap-2 truncate">
+                                        <span className="text-slate-400">📄</span>
+                                        <span className="text-slate-300 truncate">{scan.reportName}</span>
+                                      </div>
+                                      <a
+                                        href={`${import.meta.env.VITE_API_URL.replace('/api','')}${scan.reportUrl}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1 rounded transition-colors whitespace-nowrap ml-2 flex items-center gap-1 border border-emerald-500/20"
+                                      >
+                                        Open Report 
+                                      </a>
+                                    </div>
+                                  )}
+
+
+                                  {scanFindings.length > 0 && (
+                                    <div className="space-y-2 mt-2 border-t border-slate-700/50 pt-2">
+                                      <p className="text-[11px] font-semibold text-slate-500 uppercase">Findings ({scanFindings.length})</p>
+                                      {scanFindings.map(f => (
+                                        <div key={f.id} className="bg-slate-900/40 p-2.5 rounded border border-slate-700 flex justify-between items-start text-xs">
+                                          <span className="text-slate-300 font-medium">{f.title}</span>
+                                          <span className={`font-bold ${getSeverityBadge(f.severity)} px-2 py-0.5 rounded text-[10px]`}>{f.severity}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                  
+                                  {scanFindings.length === 0 && (
+                                    <div className="mt-1 text-xs text-emerald-400/80 italic border-t border-slate-700/50 pt-2">
+                                      ✨ Clean Scan - No findings detected
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
