@@ -6,6 +6,8 @@ import BrmDashboardView from '../../components/dashboard/BrmDashboardView.jsx';
 import api from '../../api/axios.js'; 
 import BrmDetailModal from '../../components/BrmDetailModal';
 import { approveArchitecture } from '../../api/brm.api.js';
+import BrmMetricsTab from '../../components/BrmMetricsTab.jsx';
+
 
 
 
@@ -320,6 +322,12 @@ export default function PlDashboard() {
           >
             BRM Closing
           </button>
+          <button 
+            onClick={() => setActiveTab('metrics')} 
+            className={`pb-2 px-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'metrics' ? 'border-brand-500 text-brand-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+          >
+            BRM Metrics
+          </button>
         </div>
         {/* ─── RENDER DASHBOARD OR ACTION ITEMS ─── */}
         {activeTab === 'overview' ? (
@@ -581,7 +589,10 @@ export default function PlDashboard() {
               </div>
             )}
           </div>
+                ) : activeTab === 'metrics' ? (
+          <BrmMetricsTab />
         ) : null}
+
       </div>
 
       {/* ─── CREATE BRM MODAL ──────────────────────────────────────────── */}

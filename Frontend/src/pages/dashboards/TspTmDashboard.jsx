@@ -194,21 +194,22 @@ export default function TspTmDashboard() {
 
             {/* LEFT — Task List */}
             <div className="space-y-4">
-              <h2 className="text-slate-300 text-sm font-semibold uppercase tracking-wide">
-                Assigned Tasks ({allocations.length})
+                            <h2 className="text-slate-300 text-sm font-semibold uppercase tracking-wide">
+                Assigned Tasks ({allocations.filter(a => a.status !== 'COMPLETED' && a.status !== 'QA_COMPLETED' && a.status !== 'QA_TESTING').length})
               </h2>
               {loadingAlloc ? (
                 <div className="flex justify-center py-10">
                   <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-blue-500"></div>
                 </div>
-              ) : allocations.length === 0 ? (
+              ) : allocations.filter(a => a.status !== 'COMPLETED' && a.status !== 'QA_COMPLETED' && a.status !== 'QA_TESTING').length === 0 ? (
                 <div className="text-center py-16 bg-slate-800 border border-slate-700 rounded-xl">
                   <div className="text-5xl mb-4">📋</div>
-                  <p className="text-slate-300 font-medium">No tasks assigned yet</p>
+                  <p className="text-slate-300 font-medium">No active tasks assigned yet</p>
                   <p className="text-slate-500 text-sm mt-1">Your TSP TL will assign tasks to you soon.</p>
                 </div>
               ) : (
-                allocations.map(alloc => {
+                allocations.filter(a => a.status !== 'COMPLETED' && a.status !== 'QA_COMPLETED' && a.status !== 'QA_TESTING').map(alloc => {
+
                   const progress = getLatestProgress(alloc);
                   const completedMilestones = alloc.milestones?.filter(m => m.status === 'COMPLETED').length || 0;
                   const totalMilestones = alloc.milestones?.length || 0;

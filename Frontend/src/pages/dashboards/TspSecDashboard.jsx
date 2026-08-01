@@ -18,6 +18,12 @@ export default function TspSecDashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [submittingScan, setSubmittingScan] = useState(false);
 
+
+    // Get the backend base URL (e.g., http://localhost:5000) by stripping '/api' from the axios default URL
+  const serverBaseUrl = api.defaults.baseURL.replace('/api', '');
+  const getFullUrl = (url) => url ? `${serverBaseUrl}${url}` : '';
+
+
   const fetchBrms = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
@@ -188,11 +194,22 @@ export default function TspSecDashboard() {
                                 <div key={scan.id} className="bg-slate-900/40 p-3 rounded-xl border border-slate-700/40 opacity-80 hover:opacity-100 transition-opacity">
                                   <h4 className="text-slate-400 font-bold text-[11px] mb-2">Scan #{scan.scanNumber} History</h4>
                                   
-                                  {scan.reportUrl && (
-                                    <div className="p-2 mb-2 bg-slate-800/80 rounded border border-slate-700 flex items-center justify-between text-[11px]">
-                                      <span className="text-slate-400 truncate">📄 {scan.reportName}</span>
-                                    </div>
+                                                                      {scan.reportUrl && (
+                                    <a 
+                                      href={getFullUrl(scan.reportUrl)} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer" 
+                                      download 
+                                      className="p-2 mb-2 bg-slate-800/80 hover:bg-slate-700/80 rounded border border-slate-700 flex items-center justify-between text-[11px] transition-colors cursor-pointer group"
+                                    >
+                                      <span className="text-slate-400 group-hover:text-white truncate flex items-center gap-2">
+                                        📄 {scan.reportName}
+                                      </span>
+                                      <svg className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                    </a>
                                   )}
+
+
                                   
                                   {scanFindings.length > 0 && (
                                     <div className="space-y-1.5">
@@ -218,13 +235,26 @@ export default function TspSecDashboard() {
                             </span>
                           </div>
 
-                          {/* LATEST REPORT */}
+                                                    {/* LATEST REPORT */}
                           {reportScan && (
-                            <div className="mt-3 p-3 bg-slate-900/80 rounded-xl border border-indigo-500/30 flex items-center justify-between text-xs">
-                              <span className="text-indigo-300 font-medium truncate">📄 {reportScan.reportName}</span>
-                              <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded font-bold">Uploaded</span>
-                            </div>
+                            <a 
+                              href={getFullUrl(reportScan.reportUrl)} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              download 
+                              className="mt-3 p-3 bg-slate-900/80 hover:bg-slate-800 rounded-xl border border-indigo-500/30 flex items-center justify-between text-xs transition-colors cursor-pointer group"
+                            >
+                              <span className="text-indigo-300 font-medium truncate flex items-center gap-2">
+                                📄 {reportScan.reportName}
+                              </span>
+                              <div className="flex items-center gap-3">
+                                <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded font-bold">Uploaded</span>
+                                <svg className="w-4 h-4 text-slate-400 group-hover:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                              </div>
+                            </a>
                           )}
+
+
 
                           {/* LATEST FINDINGS */}
                           {latestScanFindings.length > 0 && (

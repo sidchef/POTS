@@ -6,7 +6,7 @@ import {
   assignBrmToTm, submitUserStories, assignBrmToTspTl, submitArchitecture, approveArchitecture,addTechnologyRequirement, finalizeTechnologyRequirements,
   allocateTask,getBrmAllocations,completeAllocation , getMyAssignedTasks, getQaMembers, assignTaskToQa, getMyQaTasks,
   addQaTestScenario, getQaScenarios, addQaEvidence,approveQaTesting, getSecMembers, assignBrmToSecurity,addSecurityFinding, uploadSecurityReportController,
-  createRemediationTask, submitQaEvidences , submitSecurityScan, completeBrm// Added new functions here
+  createRemediationTask, submitQaEvidences , submitSecurityScan, completeBrm, getBrmMetrics, backfillBrmMetrics// Added new functions here
 } from "../controllers/brm.controller.js";
 import prisma from "../config/prisma.js";
 import { uploadArchitecture, uploadEvidence,uploadSecurityReport } from "../middleware/upload.middleware.js";
@@ -48,6 +48,9 @@ router.post("/allocations/assign-qa", assignTaskToQa);
 router.get("/qa/my-tasks", getMyQaTasks);
 router.post("/allocations/:allocationId/submit-qa", authenticate, submitQaEvidences);
 
+//Brm metrics
+router.get("/metrics/completed", authorize("CREATE_BRM","COMMITTEE_REVIEW"), getBrmMetrics);
+router.post("/metrics/backfill", authorize("CREATE_BRM"), backfillBrmMetrics);
 
 
 router.get("/:id", authorize("BRM_DETAILS"), getBrmById);

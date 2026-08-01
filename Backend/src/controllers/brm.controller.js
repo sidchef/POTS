@@ -2,6 +2,7 @@ import * as brmService from "../services/brm.service.js";
 import * as approvalService from "../services/approval.service.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import ApiError from "../utils/ApiError.js";
+import prisma from '../config/prisma.js';
 import { addSecurityFindingService, uploadSecurityReportService } from "../services/brm.service.js";
 
 
@@ -316,5 +317,66 @@ export const completeBrm = async (req, res, next) => {
   try {
     const result = await brmService.completeBrmService(req.params.id, req.user.id);
     res.status(200).json(new ApiResponse(200, result, "BRM marked as completed"));
+  } catch (err) { next(err); }
+};
+
+
+
+export const getBrmMetrics = async (req, res, next) => {
+  try {
+    const metrics = await prisma.brmMetric.findMany({
+      include: {
+        brm: {
+          select: {
+            id: true,
+            brmNumber: true,
+            title: true,
+            TeamName: true,
+            Category: true,
+            priority: true,
+            currentStatus: true,
+            createdAt: true,
+            taskAllocations: {
+              select: {
+                id: true,
+                taskTitle: true,
+                startDate: true,
+                endDate: true,
+                status: true,
+                tspMember: {
+                  select: { user: { select: { firstName: true, lastName: true } } }
+                }
+              }
+            }
+            
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.status(200).json(new ApiResponse(200, metrics, "BRM Metrics fetched"));
+  } catch (err) { next(err); }
+};
+
+
+export const backfillBrmMetrics = async (req, res, next) => {
+  try {
+    // Find all COMPLETED BRMs that don't have a metric record yet
+    const completedBrms = await prisma.brm.findMany({
+      where: { currentStatus: 'COMPLETED' },
+      select: { id: true, brmNumber: true }
+    });
+
+    const results = [];
+    for (const brm of completedBrms) {
+      try {
+        await brmService.calculateAndSaveBrmMetrics(brm.id);
+        results.push({ brmId: brm.id, brmNumber: brm.brmNumber, status: 'success' });
+      } catch (err) {
+        results.push({ brmId: brm.id, brmNumber: brm.brmNumber, status: 'error', error: err.message });
+      }
+    }
+
+    res.status(200).json(new ApiResponse(200, results, `Backfill complete. Processed ${results.length} BRM(s).`));
   } catch (err) { next(err); }
 };

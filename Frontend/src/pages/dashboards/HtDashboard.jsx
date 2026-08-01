@@ -3,6 +3,8 @@ import Navbar from '../../components/Navbar.jsx';
 import { BrmStatusBadge, PriorityBadge } from '../../components/BrmStatusBadge.jsx';
 import { getMyPendingApprovals, approveBrm, rejectBrm, listBrms } from '../../api/brm.api.js';
 import BrmDashboardView from '../../components/dashboard/BrmDashboardView.jsx';
+import BrmMetricsTab from '../../components/BrmMetricsTab.jsx';
+
 
 const Modal = ({ title, onClose, children }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -124,11 +126,21 @@ export default function HtDashboard() {
           >
             Pending Approvals
           </button>
+                    <button 
+            onClick={() => setActiveTab('metrics')} 
+            className={`pb-2 px-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'metrics' ? 'border-brand-500 text-brand-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+          >
+            BRM Metrics
+          </button> 
+
         </div>
         {/* ─── RENDER DASHBOARD OR PENDING APPROVALS ─── */}
-        {activeTab === 'overview' ? (
+                {activeTab === 'overview' ? (
           <BrmDashboardView brms={allBrms} />
+        ) : activeTab === 'metrics' ? (
+          <BrmMetricsTab />
         ) : (
+
           <>
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-white">Pending Approvals</h1>

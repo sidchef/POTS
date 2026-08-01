@@ -113,20 +113,23 @@ export default function TspQaDashboard() {
 
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmitQaEvidences = async () => {
+    const handleSubmitQaEvidences = async () => {
     if (!window.confirm("Are you sure you want to submit the evidences to the TSP TL?")) return;
     
     setIsSubmitting(true);
     try {
       await api.post(`/brms/allocations/${selectedTask.id}/submit-qa`);
       alert("Evidences successfully submitted to TSP TL!");
-      fetchQaTasks(); // refresh task list if needed
+      await fetchQaTasks(); // refresh task list
+      // Update selectedTask with fresh status
+      setSelectedTask(prev => ({ ...prev, status: 'QA_COMPLETED' }));
     } catch (err) {
       alert("Failed to submit evidences: " + (err.response?.data?.message || err.message));
     } finally {
       setIsSubmitting(false);
     }
   };
+
 
 
   const tabs = [
@@ -333,16 +336,29 @@ export default function TspQaDashboard() {
 
                           </div>
                         ))}
-                                        {/* Submit Evidences Button */}
+                                                                {/* Submit Evidences Button */}
                                 <div className="mt-8 flex justify-end pt-4 border-t border-slate-700/50">
-                                <button 
-                                 onClick={handleSubmitQaEvidences}
-                                 disabled={isSubmitting}
-                                 className="bg-green-600 hover:bg-green-500 text-white font-bold py-2.5 px-6 rounded-lg transition-colors shadow-lg shadow-green-600/20 flex items-center gap-2"
-                                    >
-                                   {isSubmitting ? 'Submitting...' : ' Submit Evidences to TL'}
-                                </button>
+                                {selectedTask.status === 'QA_COMPLETED' ? (
+                                  <button
+                                    disabled
+                                    className="bg-slate-700 text-slate-400 font-bold py-2.5 px-6 rounded-lg flex items-center gap-2 cursor-not-allowed border border-slate-600"
+                                  >
+                                    <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span className="text-emerald-400">Evidences Submitted</span>
+                                  </button>
+                                ) : (
+                                  <button 
+                                   onClick={handleSubmitQaEvidences}
+                                   disabled={isSubmitting}
+                                   className="bg-green-600 hover:bg-green-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-2.5 px-6 rounded-lg transition-colors shadow-lg shadow-green-600/20 flex items-center gap-2"
+                                      >
+                                     {isSubmitting ? 'Submitting...' : ' Submit Evidences to TL'}
+                                  </button>
+                                )}
                                 </div>
+
                       </div>
                     )}
                   </div>

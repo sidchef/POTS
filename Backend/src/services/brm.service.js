@@ -376,7 +376,11 @@ export const listBrms = async ({ userId, roles, status, priority, page = 1, limi
       include: {
         currentPl: { select: { firstName: true, lastName: true, employeeId: true } },
         taskAllocations: { select: { id: true, status: true, taskTitle: true } },
-        securityScans: true,
+        securityScans: {
+          include: {
+            assignedSec: { select: { firstName: true, lastName: true } }
+          }
+        },
         securityFindings: true
       },
     }),
@@ -830,6 +834,7 @@ export const getMyAssignedTasks = async (tspTlId) => {
       tspMember: {
         include: { user: { select: { firstName: true, lastName: true, email: true } } }
       },
+      qaMember: { select: { firstName: true, lastName: true } },
       milestones: true,
       progressLogs: { orderBy: { createdAt: 'desc' }, take: 1 }
     },
@@ -846,18 +851,26 @@ export const getQaMembers = async () => {
       id: true,
       firstName: true,
       lastName: true,
-      _count: {
-        select: { qaAllocations: { where: { status: 'QA_TESTING' } } }
+      // Fetch only the titles instead of using the raw _count
+      qaAllocations: {
+        where: { status: 'QA_TESTING' },
+        select: { taskTitle: true, brmId: true }
       }
     }
   });
 
-  return qaMembers.map(m => ({
-    id: m.id,
-    name: `${m.firstName} ${m.lastName}`,
-    activeTasksCount: m._count.qaAllocations
-  }));
+  return qaMembers.map(m => {
+    // Create a unique set of tasks combining BRM ID and Task Title
+    const uniqueTasks = new Set(m.qaAllocations.map(a => `${a.brmId}_${a.taskTitle}`));
+    
+    return {
+      id: m.id,
+      name: `${m.firstName} ${m.lastName}`,
+      activeTasksCount: uniqueTasks.size
+    };
+  });
 };
+
 
 export const assignTaskToQa = async (brmId, taskTitle, qaMemberId) => {
   return await prisma.taskAllocation.updateMany({
@@ -943,12 +956,11 @@ export const submitQaEvidencesService = async (allocationId, qaMemberId) => {
   }
 
   // Create a notification for the TSP TL who assigned this QA task
-  await createNotification(
-    allocation.assignedById,
-    `QA Evidences Submitted`,
-    `QA tester has submitted evidences for task '${allocation.taskTitle}' (BRM ${allocation.brm.brmNumber}). Please review and mark QA as complete.`,
-    `/dashboards/tsp-tl`
-  );
+  await createNotification({
+    userId: allocation.assignedById,
+    title: `QA Evidences Submitted`,
+    message: `QA tester has submitted evidences for task '${allocation.taskTitle}' (BRM ${allocation.brm.brmNumber}). Please review and mark QA as complete.`
+  });
 
   return { success: true };
 };
@@ -989,9 +1001,17 @@ export const getSecMembers = async () => {
       id: true,
       firstName: true,
       lastName: true,
-      _count: {
-        select: { securityScans: { where: { status: 'ASSIGNED' } } }
+        _count: {
+        select: {
+          securityScans: {
+            where: {
+              status: { in: ['ASSIGNED', 'IN_PROGRESS'] },
+              brm: { currentStatus: 'SECURITY' }  // Only count scans from active (non-completed) BRMs
+            }
+          }
+        }
       }
+
     }
   });
 
@@ -1178,13 +1198,10 @@ export const completeBrmService = async (brmId, userId) => {
   if (!brm) throw new ApiError(404, "BRM not found");
 
   await prisma.$transaction(async (tx) => {
-    // 1. Mark BRM as COMPLETED
     await tx.brm.update({
       where: { id: brmId },
       data: { currentStatus: 'COMPLETED' }
     });
-
-    // 2. Log it in history
     await tx.brmHistory.create({
       data: {
         brmId,
@@ -1196,7 +1213,141 @@ export const completeBrmService = async (brmId, userId) => {
     });
   });
 
+  // Calculate and save metrics after BRM is marked completed
+  await calculateAndSaveBrmMetrics(brmId);
+
   return { success: true, message: "BRM successfully completed" };
 };
 
 
+
+
+
+// ─── CALCULATE & SAVE BRM METRICS (call when BRM is COMPLETED) ───────────────
+export const calculateAndSaveBrmMetrics = async (brmId) => {
+  const brm = await prisma.brm.findUnique({
+    where: { id: brmId },
+    include: {
+      history: { orderBy: { createdAt: 'asc' } },
+      approvalCycles: { include: { approvals: true } },
+      taskAllocations: {
+        include: {
+          progressLogs: { orderBy: { createdAt: 'asc' } },
+          qaTestScenarios: { include: { qaEvidences: true } }
+        }
+      },
+      securityScans: { include: { securityFindings: true } },
+      securityFindings: true,
+    }
+  });
+
+  if (!brm) throw new ApiError(404, "BRM not found");
+
+  // Overall duration
+  const overallStartDate = brm.createdAt;
+  const overallEndDate = brm.updatedAt;
+  const totalDurationDays = Math.ceil(
+    (overallEndDate - overallStartDate) / (1000 * 60 * 60 * 24)
+  );
+
+  // Approval metrics
+  const approvalCycles = brm.approvalCycles;
+  const approvalResubmissions = Math.max(0, approvalCycles.length - 1);
+  // Find time between SUBMITTED and APPROVED from history
+  const submittedEntry = brm.history.find(h => h.newStatus === 'SUBMITTED');
+  const approvedEntry = brm.history.find(h => h.newStatus === 'APPROVED');
+  let approvalSlaHours = 0;
+  let approvalBreached = false;
+  if (submittedEntry && approvedEntry) {
+    approvalSlaHours = Math.ceil(
+      (new Date(approvedEntry.createdAt) - new Date(submittedEntry.createdAt)) / (1000 * 60 * 60)
+    );
+    approvalBreached = approvalSlaHours > 48;
+  }
+
+  // Architecture metrics
+  const archStartEntry = brm.history.find(h => h.newStatus === 'ARCHITECTURE_CREATION');
+  const archEndEntry = brm.history.find(h => h.newStatus === 'READY_FOR_DEVELOPMENT');
+  let architectureSlaHours = 0;
+  let architectureBreached = false;
+  const architectureResubmits = 0; // tracked via ArchitectureTracking if needed
+  if (archStartEntry && archEndEntry) {
+    architectureSlaHours = Math.ceil(
+      (new Date(archEndEntry.createdAt) - new Date(archStartEntry.createdAt)) / (1000 * 60 * 60)
+    );
+    architectureBreached = architectureSlaHours > 72;
+  }
+
+  // Task metrics
+  const taskAllocations = brm.taskAllocations;
+  const totalTasks = taskAllocations.length;
+  const completedTasks = taskAllocations.filter(
+    t => t.status === 'COMPLETED' || t.status === 'QA_COMPLETED'
+  ).length;
+
+  // QA metrics
+  const totalQaCycles = taskAllocations.filter(
+    t => t.status === 'QA_TESTING' || t.status === 'QA_COMPLETED'
+  ).length;
+
+  // Security metrics
+  const securityScans = brm.securityScans;
+  const totalSecurityScans = securityScans.length;
+  const allFindings = brm.securityFindings;
+  const totalFindings = allFindings.length;
+  const criticalFindings = allFindings.filter(f => f.severity === 'CRITICAL').length;
+  const highFindings = allFindings.filter(f => f.severity === 'HIGH').length;
+  const mediumFindings = allFindings.filter(f => f.severity === 'MEDIUM').length;
+  const lowFindings = allFindings.filter(f => f.severity === 'LOW').length;
+  const totalRemediationTasks = securityScans.filter(s => s.status === 'FAILED').length;
+
+  // Upsert (create or update) the metric record
+  await prisma.brmMetric.upsert({
+    where: { brmId },
+    update: {
+      overallStartDate,
+      overallEndDate,
+      totalDurationDays,
+      approvalSlaHours,
+      approvalBreached,
+      approvalResubmissions,
+      architectureSlaHours,
+      architectureBreached,
+      architectureResubmits,
+      totalTasks,
+      completedTasks,
+      totalQaCycles,
+      totalSecurityScans,
+      totalFindings,
+      criticalFindings,
+      highFindings,
+      mediumFindings,
+      lowFindings,
+      totalRemediationTasks,
+    },
+    create: {
+      brmId,
+      overallStartDate,
+      overallEndDate,
+      totalDurationDays,
+      approvalSlaHours,
+      approvalBreached,
+      approvalResubmissions,
+      architectureSlaHours,
+      architectureBreached,
+      architectureResubmits,
+      totalTasks,
+      completedTasks,
+      totalQaCycles,
+      totalSecurityScans,
+      totalFindings,
+      criticalFindings,
+      highFindings,
+      mediumFindings,
+      lowFindings,
+      totalRemediationTasks,
+    }
+  });
+
+  return { success: true };
+};

@@ -390,10 +390,9 @@ export default function SecurityManagementLayout({ brms = [], onRefresh, onSelec
                 <p className="text-slate-500 text-sm">No failed scans or vulnerability reports at this time.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-6">
+                            <div className="grid grid-cols-1 gap-6">
                 {failedScanBrms.map(brm => {
-                  const findings = brm.securityFindings || [];
-                  const reportScan = brm.securityScans?.find(s => s.reportUrl);
+                  const sortedScans = [...(brm.securityScans || [])].sort((a, b) => a.scanNumber - b.scanNumber);
 
                   return (
                     <div key={brm.id} className="bg-slate-900/60 border border-red-500/30 p-6 rounded-2xl transition-all shadow-lg space-y-4">
@@ -408,56 +407,97 @@ export default function SecurityManagementLayout({ brms = [], onRefresh, onSelec
                           {brm.TeamName && <p className="text-slate-400 text-xs mt-1">Team: {brm.TeamName}</p>}
                         </div>
 
-                          {/* DOWNLOAD REPORT & ASSIGN TASK BUTTONS */}
-                         <div className="flex gap-2">
-                            {reportScan && (
-                           <a
-                            href={`${import.meta.env.VITE_API_URL.replace('/api','')}${reportScan.reportUrl}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-brand-400 text-sm font-medium rounded-lg transition-colors border border-brand-500/30 flex items-center gap-2"
-                             >
-                              <span>📄</span> Download Report
-                               </a>
-                             )}
-    
-                             <button
-                              onClick={() => {
-                                if (onSelectBrmToAllocate) {
-                                  onSelectBrmToAllocate(brm);
-                                }
-                              }}
-                               className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm font-bold rounded-lg transition-colors border border-red-500/50 flex items-center gap-2"
-                                >
-                                <span>🔨</span> Assign Remediation Task
-                              </button>
+                        {/* ASSIGN TASK BUTTON */}
+                        <button
+                          onClick={() => { if (onSelectBrmToAllocate) onSelectBrmToAllocate(brm); }}
+                          className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm font-bold rounded-lg transition-colors border border-red-500/50 flex items-center gap-2"
+                        >
+                          <span>🔨</span> Assign Remediation Task
+                        </button>
                       </div>
 
-                      </div>
+                      {/* PER-SCAN SECTIONS */}
+                      <div className="space-y-4 pt-2">
+                        {sortedScans.map(scan => {
+                          const scanFindings = (brm.securityFindings || []).filter(f => f.securityScanId === scan.id);
+                          const isLatest = scan.scanNumber === sortedScans.length;
 
-                      {/* DISPLAY MANUAL FINDINGS WITH SEVERITY */}
-                      {findings.length > 0 && (
-                        <div className="pt-4 border-t border-slate-800 space-y-3">
-                          <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Logged Findings ({findings.length})</h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {findings.map(f => (
-                              <div key={f.id} className="bg-slate-800/70 p-3.5 rounded-xl border border-slate-700/60 space-y-1.5">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-white font-bold text-sm">{f.title}</span>
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getSeverityBadge(f.severity)}`}>
-                                    {f.severity}
+                          return (
+                            <div
+                              key={scan.id}
+                              className={`rounded-xl border p-4 space-y-3 ${
+                                isLatest
+                                  ? 'border-red-500/40 bg-red-500/5'
+                                  : 'border-slate-700/50 bg-slate-800/40'
+                              }`}
+                            >
+                              {/* Scan Header */}
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full border ${
+                                    isLatest
+                                      ? 'text-red-400 bg-red-500/10 border-red-500/30'
+                                      : 'text-slate-400 bg-slate-700/50 border-slate-600'
+                                  }`}>
+                                    Scan #{scan.scanNumber} {isLatest ? '— Latest' : '— Previous'}
+                                  </span>
+                                  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
+                                    scan.status === 'FAILED'
+                                      ? 'text-red-400 bg-red-500/10 border-red-500/20'
+                                      : scan.status === 'COMPLETED'
+                                        ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                                        : 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20'
+                                  }`}>
+                                    {scan.status}
                                   </span>
                                 </div>
-                                <p className="text-slate-400 text-xs leading-relaxed">{f.description}</p>
+
+                                {/* Download Report for this specific scan */}
+                                {scan.reportUrl && (
+                                  <a
+                                    href={`${import.meta.env.VITE_API_URL.replace('/api','')}${scan.reportUrl}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-brand-400 text-xs font-medium rounded-lg transition-colors border border-brand-500/30 flex items-center gap-1.5"
+                                  >
+                                    <span>📄</span> Download Report
+                                  </a>
+                                )}
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+
+                              {/* Findings for this scan */}
+                              {scanFindings.length > 0 ? (
+                                <div className="space-y-2">
+                                  <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                                    Findings ({scanFindings.length})
+                                  </p>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {scanFindings.map(f => (
+                                      <div key={f.id} className="bg-slate-800/70 p-3.5 rounded-xl border border-slate-700/60 space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-white font-bold text-sm">{f.title}</span>
+                                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getSeverityBadge(f.severity)}`}>
+                                            {f.severity}
+                                          </span>
+                                        </div>
+                                        <p className="text-slate-400 text-xs leading-relaxed">{f.description}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-slate-600 text-xs italic">No findings logged for this scan.</p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
                     </div>
                   );
                 })}
               </div>
+
             )}
           </div>
         )}
@@ -616,6 +656,25 @@ export default function SecurityManagementLayout({ brms = [], onRefresh, onSelec
 
             {/* Select Security Member & Action */}
             <div className="pt-4 border-t border-slate-700 space-y-4">
+
+             {allocModal.brm.securityScans && allocModal.brm.securityScans.length > 0 && (() => {
+                const sortedScans = [...allocModal.brm.securityScans].sort((a, b) => b.scanNumber - a.scanNumber);
+                const lastScan = sortedScans[0];
+                if (lastScan && lastScan.assignedSec) {
+                  return (
+                    <div className="bg-indigo-900/20 border border-indigo-500/30 p-3 rounded-xl mb-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-indigo-400 text-[10px] font-bold uppercase tracking-wider mb-0.5">Previous Security Auditor</p>
+                        <p className="text-white text-sm font-medium">{lastScan.assignedSec.firstName} {lastScan.assignedSec.lastName}</p>
+                      </div>
+                      <span className="text-xs bg-indigo-500/20 text-indigo-400 px-2 py-1 rounded-full border border-indigo-500/40 font-semibold">
+                        Scan #{lastScan.scanNumber}
+                      </span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
               <div>
                 <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">
                   Assign Security Lead / Auditor

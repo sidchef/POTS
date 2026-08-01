@@ -152,15 +152,17 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
   };
 
 
-
-
-
     // Group the tasks first, then filter so the Modal receives the correct format!
-  const groupedTasks = groupTasksByTitle(tasks);
+  const activeBrmIds = new Set(brmsNeedingAllocation.map(b => b.id));
+  
+  // Only show tasks that belong to BRMs currently in the "NEEDS ALLOCATION" section
+  const groupedTasks = groupTasksByTitle(tasks).filter(t => activeBrmIds.has(t.brm?.id || t.brmId));
+  
   const completedTasks = groupedTasks.filter(t => t.assignedMembers.every(m => m.status === 'COMPLETED'));
   
   // For future QA integration
   const qaTasks = groupedTasks.filter(t => t.assignedMembers.some(m => m.status === 'QA_TESTING' || m.status === 'QA_COMPLETED')); 
+ 
  
 
   return (
@@ -178,17 +180,17 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
               <button onClick={() => { setActiveTab('ALL_TASKS'); setSelectedBrm(null); }}
               className={`w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeTab === 'ALL_TASKS' ? 'bg-brand-500/20 text-brand-400' : 'text-slate-400 hover:bg-slate-800'}`}>
               <span> All Tasks</span>
-              <span className="bg-slate-800 text-xs px-2 py-0.5 rounded-full">{groupTasksByTitle(tasks).length}</span>
+              <span className="bg-slate-800 text-xs px-2 py-0.5 rounded-full">{groupedTasks.length}</span>
             </button>
             <button onClick={() => { setActiveTab('COMPLETED'); setSelectedBrm(null); }}
               className={`w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeTab === 'COMPLETED' ? 'bg-green-500/20 text-green-400' : 'text-slate-400 hover:bg-slate-800'}`}>
               <span> Completed Tasks</span>
-              <span className="bg-slate-800 text-xs px-2 py-0.5 rounded-full">{groupTasksByTitle(completedTasks).length}</span>
+              <span className="bg-slate-800 text-xs px-2 py-0.5 rounded-full">{completedTasks.length}</span>
             </button>
             <button onClick={() => { setActiveTab('QA'); setSelectedBrm(null); }}
               className={`w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${activeTab === 'QA' ? 'bg-yellow-500/20 text-yellow-400' : 'text-slate-400 hover:bg-slate-800'}`}>
               <span> QA Tasks</span>
-              <span className="bg-slate-800 text-xs px-2 py-0.5 rounded-full">{groupTasksByTitle(qaTasks).length}</span>
+             <span className="bg-slate-800 text-xs px-2 py-0.5 rounded-full">{qaTasks.length}</span>
             </button>
 
           </div>
@@ -225,7 +227,7 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
         ) : activeTab === 'ALL_TASKS' ? (
            <div className="space-y-4">
              <h2 className="text-white text-lg font-semibold mb-6">All Assigned Tasks</h2>
-                {groupTasksByTitle(tasks).map((t, idx) => (
+                  {groupedTasks.map((t, idx) => (
               <div 
                  key={idx} 
                  onClick={() => setSelectedTaskView(t)} 
@@ -430,7 +432,7 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
 
                 {/* ASSIGNED DEVELOPERS SECTION (Moved to Overview) */}
                 <div className="pt-4 border-t border-slate-700/50 space-y-4">
-                  <h3 className="text-slate-400 font-semibold uppercase tracking-wider text-sm">Assigned Developers</h3>
+                  <h3 className="text-slate-400 font-semibold uppercase tracking-wider text-sm">Assigned Members</h3>
                   <div className="space-y-3">
                     {selectedTaskView.assignedMembers.map((m, idx) => (
                       <div key={idx} className="bg-slate-900/80 p-3 rounded-xl border border-slate-700 flex items-center justify-between">
@@ -451,6 +453,24 @@ export default function TaskManagementLayout({ brmsNeedingAllocation, onSelectBr
                         </span>
                       </div>
                     ))}
+                    
+                    {/* QA Member */}
+                    {selectedTaskView.qaMember && ['QA REVIEW', 'QA COMPLETED', 'COMPLETED'].includes(getGroupedStatus(selectedTaskView.assignedMembers)) && (
+                      <div className="bg-slate-900/80 p-3 rounded-xl border border-blue-500/30 flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 rounded-full bg-blue-900/40 border border-blue-700 flex items-center justify-center text-blue-400 font-bold">
+                            {selectedTaskView.qaMember.firstName?.[0]}{selectedTaskView.qaMember.lastName?.[0] || ''}
+                          </div>
+                          <div>
+                            <p className="text-white font-medium text-sm">{selectedTaskView.qaMember.firstName} {selectedTaskView.qaMember.lastName}</p>
+                            <p className="text-slate-400 text-xs mt-0.5">Assigned QA Tester</p> 
+                          </div>
+                        </div>
+                        <span className="px-3 py-1 bg-blue-900/30 border border-blue-800 rounded-full text-blue-400 text-xs font-semibold">
+                          QA
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
