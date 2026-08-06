@@ -18,7 +18,7 @@ export const slaWorker = new Worker('slaQueue', async job => {
     });
 
     // If task was deleted or already completed, ignore it
-    if (!allocation || allocation.status === 'COMPLETED') return;
+     if (!allocation || allocation.status !== 'ACTIVE') return;
 
     console.log(`[SLA Worker] 24h deadline warning for Task ${allocationId}`);
 
